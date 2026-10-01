@@ -301,6 +301,18 @@ namespace TShockEconomyExp.Handlers
 
                         if (netId > 0 && heldItem != null && !heldItem.IsAir && (heldItem.damage > 0 || heldItem.defense > 0 || heldItem.accessory))
                         {
+                            // 🌟 손에 든 무기 레벨 제한 검사
+                            var iCfg = PluginMain.Config.ItemRequirements;
+                            int pLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
+                            if (iCfg != null && iCfg.Enabled && iCfg.Requirements != null && iCfg.Requirements.TryGetValue(netId.ToString(), out int reqLvl))
+                            {
+                                if (pLevel < reqLvl)
+                                {
+                                    player.SendErrorMessage($"⛔ [장비 제한] [{heldItem.AffixName()}] 은(는) 레벨 {reqLvl} 이상부터 온전히 사용할 수 있습니다! (현재 레벨: Lv.{pLevel})");
+                                    HudHelper.ShowStatusText(player, $"⚠️ [사용 불가]\n필요 레벨: Lv.{reqLvl} (내 레벨: Lv.{pLevel})");
+                                    continue;
+                                }
+                            }
                             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
                             var statCfg = PluginMain.Config.StatDamage;
 
@@ -384,9 +396,25 @@ namespace TShockEconomyExp.Handlers
             if (netId <= 0) return;
 
             string key = netId.ToString();
+            int playerLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
+
+            // (1) 장비 착용/소지 레벨 제한 검사
+            var iCfg = PluginMain.Config.ItemRequirements;
+            if (iCfg != null && iCfg.Enabled && iCfg.Requirements != null && iCfg.Requirements.TryGetValue(key, out int itemReqLevel))
+            {
+                if (playerLevel < itemReqLevel)
+                {
+                    args.Handled = true;
+                    // 슬롯 원복 동기화
+                    NetMessage.SendData((int)PacketTypes.PlayerSlot, -1, -1, null, player.Index, args.Slot);
+                    player.SendErrorMessage($"⛔ [장비 제한] 해당 장비는 레벨 {itemReqLevel} 이상부터 착용/사용할 수 있습니다! (현재 레벨: Lv.{playerLevel})");
+                    return;
+                }
+            }
+
+            // (2) 보스 소환 아이템 레벨 제한 검사
             if (bCfg.BossItemLevelRequirements != null && bCfg.BossItemLevelRequirements.TryGetValue(key, out int requiredLevel))
             {
-                int playerLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
                 if (playerLevel < requiredLevel)
                 {
                     args.Handled = true;
@@ -764,9 +792,10 @@ namespace TShockEconomyExp.Handlers
             if (rawBonusDamage > 0)
             {
                 float defenseFactor = 0.5f;
+                var mBal = PluginMain.Config.MasterBalance;
                 if (Main.masterMode)
                 {
-                    defenseFactor = 1.0f;
+                    defenseFactor = mBal != null && mBal.Enabled ? mBal.DefenseFactor : 1.0f;
                 }
                 else if (Main.expertMode)
                 {
@@ -830,9 +859,18 @@ namespace TShockEconomyExp.Handlers
             int effectiveTotalDamage = Math.Min(baseDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
+            // 마스터모드 보너스 보상 적용
+            double masterExpMult = 1.0;
+            double masterMoneyMult = 1.0;
+            if (Main.masterMode && PluginMain.Config.MasterBalance != null && PluginMain.Config.MasterBalance.Enabled)
+            {
+                masterExpMult = PluginMain.Config.MasterBalance.ExpMultiplier;
+                masterMoneyMult = PluginMain.Config.MasterBalance.MoneyMultiplier;
+            }
+
             // 최소 1 이상의 경험치/골드가 들어오도록 보정 (0.02비율로 40 이하 데미지일 때 0이 되는 현상 방지)
-            long totalExpGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * expRatio));
-            long totalMoneyGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * moneyRatio));
+            long totalExpGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * expRatio * masterExpMult));
+            long totalMoneyGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * moneyRatio * masterMoneyMult));
 
             if (title != null)
             {

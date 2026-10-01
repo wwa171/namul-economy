@@ -230,8 +230,79 @@ namespace TShockEconomyExp.Config
         };
     }
 
+    
+    public class ItemLevelRequirementConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 아이템 NetID별 착용/사용 최소 요구 레벨
+        [JsonProperty("Requirements")]
+        public Dictionary<string, int> Requirements { get; set; } = new()
+        {
+            // === [초반 광물 장비: Lv.1 ~ Lv.10] ===
+            ["3504"] = 1,   // 구리 브로드소드
+            ["3508"] = 3,   // 철 브로드소드
+            ["3512"] = 5,   // 은 브로드소드
+            ["3516"] = 8,   // 금 브로드소드
+            ["3520"] = 10,  // 백금 브로드소드
+
+            // === [초중반 / 던전 / 지옥: Lv.15 ~ Lv.35] ===
+            ["155"] = 15,   // 무라마사
+            ["157"] = 18,   // 스타퓨리
+            ["190"] = 22,   // 풀의 검
+            ["121"] = 28,   // 불타는 대검
+            ["757"] = 32,   // 밤의 칼날
+
+            // === [하드모드 초반: Lv.40 ~ Lv.55] ===
+            ["483"] = 40,   // 코발트 검
+            ["484"] = 45,   // 미스릴 검
+            ["485"] = 50,   // 아다만타이트 검
+            ["378"] = 52,   // 엑스칼리버
+            ["671"] = 55,   // 참수검
+
+            // === [하드모드 중후반 / 기계보스 이후 / 플랜테라: Lv.60 ~ Lv.75] ===
+            ["674"] = 60,   // 진정한 밤의 칼날
+            ["675"] = 65,   // 진정한 엑스칼리버
+            ["753"] = 70,   // 테라블레이드
+            ["1123"] = 72,  // 인플럭스 웨이버
+            ["1259"] = 75,  // 씨앗 살포기
+
+            // === [엔드게임 / 달의 군주: Lv.80 ~ Lv.90] ===
+            ["3063"] = 80,  // 스타래스
+            ["3065"] = 85,  // 미야우미어
+            ["4956"] = 90   // 제니스
+        };
+    }
+
+    public class MasterModeBalanceConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 마스터모드 경험치 획득 배율 (+50%)
+        [JsonProperty("ExpMultiplier")]
+        public double ExpMultiplier { get; set; } = 1.5;
+
+        // 마스터모드 골드 획득 배율 (+50%)
+        [JsonProperty("MoneyMultiplier")]
+        public double MoneyMultiplier { get; set; } = 1.5;
+
+        // 몬스터 방어력 기본 감쇄율 (마스터모드 100%)
+        [JsonProperty("DefenseFactor")]
+        public float DefenseFactor { get; set; } = 1.0f;
+    }
+
     public class PluginConfig
     {
+        // 🌟 장비 착용/사용 레벨 제한 설정
+        [JsonProperty("ItemRequirements")]
+        public ItemLevelRequirementConfig ItemRequirements { get; set; } = new();
+
+        // 🌟 마스터모드 특화 밸런스 설정
+        [JsonProperty("MasterBalance")]
+        public MasterModeBalanceConfig MasterBalance { get; set; } = new();
+
         [JsonProperty("CurrencyName")]
         public string CurrencyName { get; set; } = "골드";
 
