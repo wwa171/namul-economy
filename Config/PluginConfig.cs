@@ -62,11 +62,17 @@ namespace TShockEconomyExp.Config
         [JsonProperty("DamageIncreasePerStep")]
         public double DamageIncreasePerStep { get; set; } = 0.03;
 
+        [JsonProperty("DefenseIncreasePerStep")]
+        public double DefenseIncreasePerStep { get; set; } = 0.03;
+
         [JsonProperty("MaxHealthMultiplier")]
         public double MaxHealthMultiplier { get; set; } = 10.0;
 
         [JsonProperty("MaxDamageMultiplier")]
         public double MaxDamageMultiplier { get; set; } = 5.0;
+
+        [JsonProperty("MaxDefenseMultiplier")]
+        public double MaxDefenseMultiplier { get; set; } = 5.0;
 
         [JsonProperty("ScaleRewardsWithDistance")]
         public bool ScaleRewardsWithDistance { get; set; } = true;

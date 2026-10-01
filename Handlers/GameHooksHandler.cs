@@ -445,6 +445,7 @@ namespace TShockEconomyExp.Handlers
 
             double healthMultiplier = Math.Min(cfg.MaxHealthMultiplier, 1.0 + (steps * cfg.HealthIncreasePerStep));
             double damageMultiplier = Math.Min(cfg.MaxDamageMultiplier, 1.0 + (steps * cfg.DamageIncreasePerStep));
+            double defenseMultiplier = Math.Min(cfg.MaxDefenseMultiplier, 1.0 + (steps * cfg.DefenseIncreasePerStep));
 
             if (healthMultiplier > 1.0)
             {
@@ -456,6 +457,11 @@ namespace TShockEconomyExp.Handlers
             if (damageMultiplier > 1.0)
             {
                 npc.damage = (int)(npc.damage * damageMultiplier);
+            }
+
+            if (defenseMultiplier > 1.0)
+            {
+                npc.defense = (int)(npc.defense * defenseMultiplier);
             }
 
             NetMessage.SendData(23, -1, -1, null, npcIndex);
