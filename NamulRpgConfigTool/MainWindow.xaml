@@ -47,7 +47,7 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBlock x:Name="TxtLangLabel" Text="🌐 언어 / Language: " VerticalAlignment="Center" Foreground="#CDD6F4" Margin="0,0,8,0"/>
-                <ComboBox x:Name="CmbLanguage" Width="110" SelectedIndex="0" SelectionChanged="CmbLanguage_SelectionChanged" Background="#313244" Foreground="#11111B">
+                <ComboBox x:Name="CmbLanguage" Width="110" SelectionChanged="CmbLanguage_SelectionChanged" Background="#313244" Foreground="#11111B">
                     <ComboBoxItem Content="한국어 (KO)"/>
                     <ComboBoxItem Content="English (EN)"/>
                 </ComboBox>

@@ -12,21 +12,27 @@ namespace NamulRpgConfigTool
     {
         private string? _currentFilePath = null;
         private bool _isEnglish = false;
+        private bool _isInitialized = false;
 
         public MainWindow()
         {
             InitializeComponent();
+            _isInitialized = true;
+            CmbLanguage.SelectedIndex = 0;
             ApplyLanguage(false);
         }
 
         private void CmbLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (!_isInitialized) return;
             _isEnglish = CmbLanguage.SelectedIndex == 1;
             ApplyLanguage(_isEnglish);
         }
 
         private void ApplyLanguage(bool en)
         {
+            if (!_isInitialized) return;
+
             if (en)
             {
                 TxtTitle.Text = "🌱 Namul RPG Unified Config Tool";
