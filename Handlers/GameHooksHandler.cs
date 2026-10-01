@@ -37,6 +37,12 @@ namespace TShockEconomyExp.Handlers
             2289, 2291, 2292, 2293, 2294, 2295, 2296, 2297, 4325, 4442, 4444
         };
 
+        // 🌟 테라리아 모든 낚시 찌(Bobber) 투사체 ID (찌 투사체 활성 및 낚시 중 검증용)
+        private static readonly HashSet<int> _bobberProjectileIds = new()
+        {
+            360, 361, 362, 363, 364, 365, 366, 381, 382, 760, 775
+        };
+
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
             ServerApi.Hooks.NpcSpawn.Register(plugin, OnNpcSpawn);
@@ -498,7 +504,6 @@ namespace TShockEconomyExp.Handlers
             if (isCrate || isFish)
             {
                 // 🌟 [어뷰징 방지 1] 낚싯대(Fishing Pole)를 손에 들고 있는지 검증
-                // 인벤토리에서 물고기나 상자를 땅에 버렸다 줍는 무한 파밍(ItemDrop 패킷 악용) 원천 차단
                 if (fCfg.RequireFishingPoleHeld)
                 {
                     Item heldItem = player.TPlayer.HeldItem;
@@ -506,6 +511,34 @@ namespace TShockEconomyExp.Handlers
                     {
                         return; // 낚싯대를 들고 있지 않은 상태에서 드롭된 물고기/상자는 보상 지급 거부
                     }
+                }
+
+                // 🌟 [어뷰징 방지 1-1] 플레이어가 실제로 던져놓은 낚시 찌(Bobber) 투사체 검증
+                // 낚싯대를 들고 가만히 서 있을 때 다른 유저가 물고기/상자를 던져주는 어뷰징 원천 차단!
+                // 물속의 본인 소유 찌(Bobber)가 존재하고, 드롭된 아이템 좌표(args.Position)가 찌 근처(물속 낚시 위치)인지 정밀 검증
+                bool hasValidBobberCatch = false;
+                for (int i = 0; i < Main.maxProjectiles; i++)
+                {
+                    var proj = Main.projectile[i];
+                    if (proj != null && proj.active && proj.owner == player.Index && _bobberProjectileIds.Contains(proj.type))
+                    {
+                        // 드롭된 아이템과 활성 찌(Bobber) 투사체 사이의 거리 검증
+                        // 타인이 플레이어 발밑에 아이템을 던져주는 경우: 찌는 물속에 있고 아이템은 플레이어 몸에 떨어지므로 찌와의 거리가 멂
+                        // 실제 낚시 성공: 아이템이 찌(Bobber) 위치에서 생성되어 튀어오름 (반경 160픽셀 = 10타일 이내)
+                        float dx = args.Position.X - proj.position.X;
+                        float dy = args.Position.Y - proj.position.Y;
+                        float distSq = dx * dx + dy * dy;
+                        if (distSq <= 160f * 160f)
+                        {
+                            hasValidBobberCatch = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!hasValidBobberCatch)
+                {
+                    return; // 찌 투사체가 없거나, 물속 찌 위치가 아닌 다른 위치(타인이 발밑에 던져줌)에서 발생한 드롭은 전량 보상 거부
                 }
 
                 // 🌟 [어뷰징 방지 2] 낚시 성공 쿨타임 검증 (고속 패킷 매크로/핵 차단)
