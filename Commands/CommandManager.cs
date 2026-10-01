@@ -775,8 +775,6 @@ namespace TShockEconomyExp.Commands
         }
 
         #endregion
-    }
-}
 
 
         #region Auction Handlers
@@ -923,3 +921,6 @@ namespace TShockEconomyExp.Commands
         }
 
         #endregion
+
+    }
+}
