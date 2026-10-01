@@ -21,6 +21,10 @@ namespace TShockEconomyExp.Handlers
         private static readonly object _placedTilesLock = new();
         private const int MaxTrackedPlacedTiles = 200000;
 
+        // 🌟 보스 소환 아이템 사용 플레이어 추적 및 레벨 스케일링용
+        private static readonly Dictionary<int, (string AccountName, int Level, DateTime Time)> _recentBossSummoners = new();
+        private static readonly object _bossSummonerLock = new();
+
         // 🌟 타격 패킷 스로틀링(과도한 브로드캐스트 방지)
         private static readonly Dictionary<int, DateTime> _npcCombatTextCooldown = new();
         private static readonly object _npcCombatTextLock = new();
@@ -36,6 +40,7 @@ namespace TShockEconomyExp.Handlers
 
             GetDataHandlers.TileEdit.Register(OnTileEdit);
             GetDataHandlers.ItemDrop.Register(OnItemDrop);
+            GetDataHandlers.PlayerSlot.Register(OnPlayerSlot);
         }
 
         public static void UnregisterHooks(TerrariaPlugin plugin)
@@ -49,6 +54,7 @@ namespace TShockEconomyExp.Handlers
 
             GetDataHandlers.TileEdit.UnRegister(OnTileEdit);
             GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
+            GetDataHandlers.PlayerSlot.UnRegister(OnPlayerSlot);
         }
 
         /// <summary>
@@ -365,6 +371,39 @@ namespace TShockEconomyExp.Handlers
             }
         }
 
+        
+        private static void OnPlayerSlot(object? sender, GetDataHandlers.PlayerSlotEventArgs args)
+        {
+            var bCfg = PluginMain.Config.BossScaling;
+            if (!bCfg.Enabled) return;
+
+            TSPlayer player = args.Player;
+            if (player == null || !player.IsLoggedIn) return;
+
+            int netId = args.Type;
+            if (netId <= 0) return;
+
+            string key = netId.ToString();
+            if (bCfg.BossItemLevelRequirements != null && bCfg.BossItemLevelRequirements.TryGetValue(key, out int requiredLevel))
+            {
+                int playerLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
+                if (playerLevel < requiredLevel)
+                {
+                    args.Handled = true;
+                    // 슬롯 원복 동기화
+                    NetMessage.SendData((int)PacketTypes.PlayerSlot, -1, -1, null, player.Index, args.Slot);
+                    player.SendErrorMessage($"⛔ [보스 소환 제한] 해당 보스 소환 아이템은 레벨 {requiredLevel} 이상부터 사용할 수 있습니다! (현재 레벨: Lv.{playerLevel})");
+                    return;
+                }
+
+                // 레벨 조건을 만족하여 소환 아이템을 사용한 경우 최근 소환자 기록 (10초간 유효)
+                lock (_bossSummonerLock)
+                {
+                    _recentBossSummoners[netId] = (player.Account.Name, playerLevel, DateTime.UtcNow);
+                }
+            }
+        }
+
         private static void OnItemDrop(object? sender, GetDataHandlers.ItemDropEventArgs args)
         {
             var fCfg = PluginMain.Config.Fishing;
@@ -498,14 +537,96 @@ namespace TShockEconomyExp.Handlers
 
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
-            var cfg = PluginMain.Config.DistanceScaling;
-            if (!cfg.Enabled) return;
-
             int npcIndex = args.NpcId;
             if (npcIndex < 0 || npcIndex >= Main.maxNPCs) return;
 
             NPC npc = Main.npc[npcIndex];
-            if (npc == null || !npc.active || npc.friendly || npc.boss) return;
+            if (npc == null || !npc.active || npc.friendly) return;
+
+            // ================= 🌟 1. 보스 관련 로직 (자연 스폰 차단 & 소환자 레벨 비례 체력 스케일링) =================
+            if (npc.boss)
+            {
+                var bCfg = PluginMain.Config.BossScaling;
+                if (bCfg.Enabled)
+                {
+                    // (1) 최근 10초 내 유저가 소환 아이템을 사용했는지 확인
+                    (string AccountName, int Level, DateTime Time)? summonerInfo = null;
+                    lock (_bossSummonerLock)
+                    {
+                        foreach (var kvp in _recentBossSummoners)
+                        {
+                            if ((DateTime.UtcNow - kvp.Value.Time).TotalSeconds <= 10)
+                            {
+                                summonerInfo = kvp.Value;
+                                break;
+                            }
+                        }
+                    }
+
+                    // (2) 자연 스폰 차단: 소환 아이템 사용 이력이 없는데 보스가 스폰되려고 할 때 차단
+                    if (bCfg.BlockNaturalBossSpawn && summonerInfo == null)
+                    {
+                        npc.active = false;
+                        npc.type = 0;
+                        args.Handled = true;
+                        TShock.Log.ConsoleInfo($"[BossScaling] 자연 발생 보스 '{npc.FullName}' 스폰이 차단되었습니다.");
+                        return;
+                    }
+
+                    // (3) 소환자 레벨 비례 보스 체력 스케일링 적용
+                    // 공식: 보스 체력 + (보스 체력 * (플레이어 레벨 * HealthIncreasePerLevel))
+                    // 예: 레벨 24, HealthIncreasePerLevel = 0.1 -> 체력 + (체력 * 2.4)
+                    int summonerLevel = 1;
+                    string summonerName = "플레이어";
+
+                    if (summonerInfo != null)
+                    {
+                        summonerLevel = summonerInfo.Value.Level;
+                        summonerName = summonerInfo.Value.AccountName;
+                    }
+                    else
+                    {
+                        // 소환자 정보가 없다면 가장 가까운 플레이어 기준
+                        double nX = npc.position.X / 16.0;
+                        double nY = npc.position.Y / 16.0;
+                        TSPlayer? nearest = null;
+                        double minD = double.MaxValue;
+                        foreach (var p in TShock.Players)
+                        {
+                            if (p != null && p.Active && p.IsLoggedIn)
+                            {
+                                double d = Math.Pow((p.X / 16.0) - nX, 2) + Math.Pow((p.Y / 16.0) - nY, 2);
+                                if (d < minD) { minD = d; nearest = p; }
+                            }
+                        }
+                        if (nearest != null)
+                        {
+                            summonerLevel = PluginMain.ExpService.GetLevel(nearest.Account.Name);
+                            summonerName = nearest.Account.Name;
+                        }
+                    }
+
+                    double bonusMultiplier = summonerLevel * bCfg.HealthIncreasePerLevel;
+                    double totalMultiplier = Math.Min(bCfg.MaxHealthMultiplier, 1.0 + bonusMultiplier);
+
+                    int originalLife = npc.lifeMax;
+                    int scaledLife = (int)(originalLife * totalMultiplier);
+
+                    npc.lifeMax = scaledLife;
+                    npc.life = scaledLife;
+
+                    NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
+
+                    TShock.Utils.Broadcast($"⚠️ [보스 출현] {summonerName}(Lv.{summonerLevel}) 님에 의해 강력해진 [{npc.FullName}]이(가) 나타났습니다! (체력: {originalLife:N0} -> {scaledLife:N0} [x{totalMultiplier:F1}])", Microsoft.Xna.Framework.Color.Crimson);
+                    return;
+                }
+                return;
+            }
+
+            // ================= 🌟 2. 일반 몬스터 거리 비례 스케일링 =================
+            var cfg = PluginMain.Config.DistanceScaling;
+            if (!cfg.Enabled) return;
+            if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
             double npcTileX = npc.position.X / 16.0;

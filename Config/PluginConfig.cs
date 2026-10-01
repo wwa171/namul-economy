@@ -191,6 +191,45 @@ namespace TShockEconomyExp.Config
         public double GodlyChanceMultiplier { get; set; } = 1.0;
     }
 
+    public class BossScalingConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 🌟 서버 자연 발생 보스 스폰 차단 (예: 밤에 자연적으로 뜨는 크툴루의 눈 등)
+        [JsonProperty("BlockNaturalBossSpawn")]
+        public bool BlockNaturalBossSpawn { get; set; } = true;
+
+        // 🌟 레벨당 보스 체력 증가 계수 (예: 0.1 이면 레벨 24일 때 24 * 0.1 = 2.4배 추가, 즉 체력 + (체력 x 2.4))
+        [JsonProperty("HealthIncreasePerLevel")]
+        public double HealthIncreasePerLevel { get; set; } = 0.1;
+
+        // 🌟 보스 최대 체력 배율 상한선 (예: 50.0배)
+        [JsonProperty("MaxHealthMultiplier")]
+        public double MaxHealthMultiplier { get; set; } = 50.0;
+
+        // 🌟 레벨별 보스 소환 아이템 사용 최소 요구 레벨 설정 (아이템 NetID 기준)
+        [JsonProperty("BossItemLevelRequirements")]
+        public Dictionary<string, int> BossItemLevelRequirements { get; set; } = new()
+        {
+            ["43"] = 10,   // 의심스러운 눈 (Eye of Cthulhu) -> Lv.10
+            ["560"] = 15,  // 슬라임 왕관 (King Slime) -> Lv.15
+            ["70"] = 20,   // 지렁이 먹이 (Eater of Worlds) -> Lv.20
+            ["1331"] = 20, // 피투성이 장 (Brain of Cthulhu) -> Lv.20
+            ["1133"] = 25, // 에이비에이션 (Queen Bee) -> Lv.25
+            ["1307"] = 30, // 사슴뿔 (Deerclops) -> Lv.30
+            ["267"] = 40,  // 가이드 부두 인형 (Wall of Flesh) -> Lv.40
+            ["556"] = 50,  // 기계 벌레 (The Destroyer) -> Lv.50
+            ["557"] = 50,  // 기계 두개골 (Skeletron Prime) -> Lv.50
+            ["544"] = 50,  // 기계 눈 (The Twins) -> Lv.50
+            ["4988"] = 55, // 젤라틴 결정 (Queen Slime) -> Lv.55
+            ["1293"] = 65, // 리자드 전지 (Golem) -> Lv.65
+            ["1156"] = 70, // 송로버섯 지렁이 (Duke Fishron) -> Lv.70
+            ["4961"] = 75, // 프리즘 풀잠자리 (Empress of Light) -> Lv.75
+            ["3601"] = 80  // 천상의 신호기 (Moon Lord) -> Lv.80
+        };
+    }
+
     public class PluginConfig
     {
         [JsonProperty("CurrencyName")]
@@ -244,6 +283,10 @@ namespace TShockEconomyExp.Config
         // 🌟 4대 직업 데미지 스탯 설정
         [JsonProperty("StatDamage")]
         public StatDamageConfig StatDamage { get; set; } = new();
+
+        // 🌟 보스 스펙 스케일링 & 소환 아이템 레벨 제한 & 자연 스폰 차단 설정
+        [JsonProperty("BossScaling")]
+        public BossScalingConfig BossScaling { get; set; } = new();
 
         [JsonProperty("DistanceScaling")]
         public DistanceScalingConfig DistanceScaling { get; set; } = new();
