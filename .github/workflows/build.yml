@@ -54,3 +54,21 @@ jobs:
       with:
         name: Namul-RPG-Build-Output
         path: build_output/
+
+    - name: Create or Update GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: "Namul RPG Core Latest Release"
+        body: |
+          🚀 **최신 TShock RPG Core (namul-economy) 자동 빌드 배포본**
+          - 커밋: ${{ github.sha }}
+          - 빌드 일자: ${{ github.event.head_commit.timestamp }}
+          - 포함 파일:
+            - `TShockEconomyExp.dll` (TShock 플러그인 바이너리)
+            - `NamulRpgConfigTool.exe` (경량 GUI 설정 편집기)
+        files: |
+          build_output/TShockEconomyExp.dll
+          build_output/NamulRpgConfigTool.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
