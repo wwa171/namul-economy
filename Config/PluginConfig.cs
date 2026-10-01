@@ -141,6 +141,18 @@ namespace TShockEconomyExp.Config
 
         [JsonProperty("CrateMoneyMultiplier")]
         public double CrateMoneyMultiplier { get; set; } = 4.0;
+
+        /// <summary>
+        /// 낚시 보상 획득 최소 쿨타임 (초) - 핵/매크로 패킷 연속 연타 차단
+        /// </summary>
+        [JsonProperty("MinFishingIntervalSeconds")]
+        public double MinFishingIntervalSeconds { get; set; } = 2.5;
+
+        /// <summary>
+        /// 낚싯대(Fishing Pole)를 손에 들고 있을 때만 낚시 보상 지급 검증 (인벤토리에서 물고기를 버려서 보상 받는 행위 원천 차단)
+        /// </summary>
+        [JsonProperty("RequireFishingPoleHeld")]
+        public bool RequireFishingPoleHeld { get; set; } = true;
     }
 
     public class JobPassiveConfig

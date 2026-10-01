@@ -29,6 +29,14 @@ namespace TShockEconomyExp.Handlers
         private static readonly Dictionary<int, DateTime> _npcCombatTextCooldown = new();
         private static readonly object _npcCombatTextLock = new();
 
+        // 🌟 낚시 어뷰징 방지 (최근 낚시 성공 시간 및 낚싯대 아이템 ID 목록)
+        private static readonly Dictionary<string, DateTime> _lastFishingSuccessTimes = new();
+        private static readonly object _fishingLock = new();
+        private static readonly HashSet<int> _fishingPoleItemIds = new()
+        {
+            2289, 2291, 2292, 2293, 2294, 2295, 2296, 2297, 4325, 4442, 4444
+        };
+
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
             ServerApi.Hooks.NpcSpawn.Register(plugin, OnNpcSpawn);
@@ -489,6 +497,32 @@ namespace TShockEconomyExp.Handlers
 
             if (isCrate || isFish)
             {
+                // 🌟 [어뷰징 방지 1] 낚싯대(Fishing Pole)를 손에 들고 있는지 검증
+                // 인벤토리에서 물고기나 상자를 땅에 버렸다 줍는 무한 파밍(ItemDrop 패킷 악용) 원천 차단
+                if (fCfg.RequireFishingPoleHeld)
+                {
+                    Item heldItem = player.TPlayer.HeldItem;
+                    if (heldItem == null || heldItem.IsAir || !_fishingPoleItemIds.Contains(heldItem.type))
+                    {
+                        return; // 낚싯대를 들고 있지 않은 상태에서 드롭된 물고기/상자는 보상 지급 거부
+                    }
+                }
+
+                // 🌟 [어뷰징 방지 2] 낚시 성공 쿨타임 검증 (고속 패킷 매크로/핵 차단)
+                lock (_fishingLock)
+                {
+                    DateTime now = DateTime.UtcNow;
+                    if (_lastFishingSuccessTimes.TryGetValue(player.Account.Name, out DateTime lastTime))
+                    {
+                        double elapsed = (now - lastTime).TotalSeconds;
+                        if (elapsed < fCfg.MinFishingIntervalSeconds)
+                        {
+                            return; // 비정상적으로 빠른 연속 낚시 패킷 차단
+                        }
+                    }
+                    _lastFishingSuccessTimes[player.Account.Name] = now;
+                }
+
                 PluginMain.TitleService.IncrementStat(player.Account.Name, "fishing", 1);
                 CheckTitleUnlocks(player);
 
