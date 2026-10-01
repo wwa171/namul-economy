@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
+using Terraria.Localization;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockEconomyExp.Config;
@@ -10,6 +13,7 @@ namespace TShockEconomyExp.Handlers
     public static class GameHooksHandler
     {
         private static DateTime _lastPassiveTick = DateTime.UtcNow;
+        private static DateTime _lastHudTick = DateTime.UtcNow;
 
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
@@ -37,6 +41,36 @@ namespace TShockEconomyExp.Handlers
             GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
         }
 
+        /// <summary>
+        /// 🌟 플레이어 머리 위에 숫자/텍스트 팝업 (CombatTextString 패킷 119번)
+        /// </summary>
+        public static void ShowCombatText(TSPlayer player, string text, Color color)
+        {
+            if (player == null || !PluginMain.Config.EnableFloatingCombatText) return;
+            try
+            {
+                var netText = NetworkText.FromLiteral(text);
+                // Packet 119: CombatTextString
+                // number: X좌표, number2: Y좌표, number3: R, number4: G, number5: B
+                NetMessage.SendData(
+                    119,
+                    -1,
+                    -1,
+                    netText,
+                    (int)player.X,
+                    player.Y - 16f,
+                    color.R,
+                    color.G,
+                    color.B,
+                    0,
+                    0
+                );
+            }
+            catch
+            {
+            }
+        }
+
         private static void OnServerChat(ServerChatEventArgs args)
         {
             if (args.Handled || !PluginMain.TitleConfig.Enabled) return;
@@ -56,7 +90,7 @@ namespace TShockEconomyExp.Handlers
             string prefix = string.Format(PluginMain.TitleConfig.PrefixFormat, title.Name);
             string formattedMessage = $"{prefix} {player.Group.Prefix}{player.Name}{player.Group.Suffix}: {args.Text}";
 
-            var color = Microsoft.Xna.Framework.Color.White;
+            var color = Color.White;
             if (!string.IsNullOrEmpty(title.ColorHex) && title.ColorHex.Length == 6)
             {
                 try
@@ -64,11 +98,11 @@ namespace TShockEconomyExp.Handlers
                     byte r = Convert.ToByte(title.ColorHex.Substring(0, 2), 16);
                     byte g = Convert.ToByte(title.ColorHex.Substring(2, 2), 16);
                     byte b = Convert.ToByte(title.ColorHex.Substring(4, 2), 16);
-                    color = new Microsoft.Xna.Framework.Color(r, g, b);
+                    color = new Color(r, g, b);
                 }
                 catch
                 {
-                    color = Microsoft.Xna.Framework.Color.Gold;
+                    color = Color.Gold;
                 }
             }
 
@@ -80,6 +114,13 @@ namespace TShockEconomyExp.Handlers
         {
             var player = TShock.Players[args.Who];
             if (player == null || !player.IsLoggedIn) return;
+
+            // 🌟 서버사이드 캐릭터(SSC) 필수 활성화 체크
+            if (PluginMain.Config.RequireServerSideCharacter && !Main.ServerSideCharacter)
+            {
+                player.SendErrorMessage("⚠️ [경고] 서버사이드 캐릭터(SSC)가 비활성화되어 있어 플러그인이 보호 모드로 동작합니다.");
+                player.SendErrorMessage("관리자 권한으로 /ssc on 을 실행해 서버사이드 캐릭터를 켜주세요.");
+            }
 
             var ecoData = PluginMain.Database.GetEconomy(player.Account.Name);
             if (ecoData.Balance == 0)
@@ -95,6 +136,42 @@ namespace TShockEconomyExp.Handlers
             }
 
             CheckTitleUnlocks(player);
+            SyncPlayerStats(player);
+        }
+
+        /// <summary>
+        /// 🌟 플레이어 스탯 실시간 동기화 (지능=최대마나, 체력=최대체력, 민첩=이동속도버프)
+        /// </summary>
+        public static void SyncPlayerStats(TSPlayer player)
+        {
+            if (player == null || !player.Active || !player.IsLoggedIn) return;
+            try
+            {
+                var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
+                var tPlayer = player.TPlayer;
+
+                // 1. 체력(VIT): 1포인트당 최대 체력 +5
+                int bonusHp = rpg.Vitality * 5;
+                int baseHp = Math.Max(100, tPlayer.statLifeMax);
+                tPlayer.statLifeMax2 = baseHp + bonusHp;
+
+                // 2. 지능(INT): 1포인트당 최대 마나 +5
+                int bonusMana = rpg.Intelligence * 5;
+                int baseMana = Math.Max(20, tPlayer.statManaMax);
+                tPlayer.statManaMax2 = baseMana + bonusMana;
+
+                // 체력/마나 패킷 동기화 (Packet 16: PlayerLifeMana)
+                NetMessage.SendData(16, -1, -1, null, player.Index);
+
+                // 3. 민첩(DEX): 이동속도 증폭 (민첩 10당 신속 버프 갱신)
+                if (rpg.Dexterity >= 10)
+                {
+                    player.SetBuff(BuffID.Swiftness, 3600);
+                }
+            }
+            catch
+            {
+            }
         }
 
         private static void CheckTitleUnlocks(TSPlayer player)
@@ -113,34 +190,76 @@ namespace TShockEconomyExp.Handlers
 
         private static void OnGameUpdate(EventArgs args)
         {
+            // 1. 직업별 고유 지속 패시브 버프 & 스탯 동기화 & 거리별 스폰율 버프
             var pCfg = PluginMain.Config.JobPassives;
-            if (!pCfg.Enabled) return;
+            var dCfg = PluginMain.Config.DistanceScaling;
 
-            if ((DateTime.UtcNow - _lastPassiveTick).TotalSeconds < Math.Max(1, pCfg.IntervalSeconds))
-                return;
-
-            _lastPassiveTick = DateTime.UtcNow;
-
-            foreach (var player in TShock.Players)
+            if ((DateTime.UtcNow - _lastPassiveTick).TotalSeconds >= Math.Max(1, pCfg.IntervalSeconds))
             {
-                if (player == null || !player.Active || !player.IsLoggedIn) continue;
+                _lastPassiveTick = DateTime.UtcNow;
 
-                var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
-                List<int>? buffsToApply = rpg.Job switch
+                foreach (var player in TShock.Players)
                 {
-                    "전사" => pCfg.WarriorBuffs,
-                    "궁수" => pCfg.RangerBuffs,
-                    "마법사" => pCfg.MageBuffs,
-                    "소환사" => pCfg.SummonerBuffs,
-                    _ => null
-                };
+                    if (player == null || !player.Active || !player.IsLoggedIn) continue;
 
-                if (buffsToApply != null && buffsToApply.Count > 0)
-                {
-                    foreach (int buffId in buffsToApply)
+                    // 스탯 동기화 (체력/마나)
+                    SyncPlayerStats(player);
+
+                    var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
+                    List<int>? buffsToApply = rpg.Job switch
                     {
-                        player.SetBuff(buffId, 600);
+                        "전사" => pCfg.WarriorBuffs,
+                        "궁수" => pCfg.RangerBuffs,
+                        "마법사" => pCfg.MageBuffs,
+                        "소환사" => pCfg.SummonerBuffs,
+                        _ => null
+                    };
+
+                    if (pCfg.Enabled && buffsToApply != null && buffsToApply.Count > 0)
+                    {
+                        foreach (int buffId in buffsToApply)
+                        {
+                            player.SetBuff(buffId, 600);
+                        }
                     }
+
+                    // 🌟 멀리 나갈수록 스폰율 상승 (Battle 버프 및 Water Candle 버프 동적 부여)
+                    if (dCfg.Enabled && dCfg.IncreaseSpawnRateWithDistance)
+                    {
+                        double dx = Math.Abs((player.X / 16.0) - Main.spawnTileX);
+                        if (dx > (dCfg.SafeZoneTileRadius + 400.0))
+                        {
+                            // 스폰에서 600타일 이상 멀리 나가면 배틀 버프 자동 부여
+                            player.SetBuff(BuffID.Battle, 300);
+                        }
+                        if (dx > (dCfg.SafeZoneTileRadius + 800.0))
+                        {
+                            // 1000타일 이상 바다 쪽으로 나가면 워터 캔들 버프까지 추가 부여하여 스폰율 극대화!
+                            player.SetBuff(BuffID.WaterCandle, 300);
+                        }
+                    }
+                }
+            }
+
+            // 2. 🌟 미니맵/상태 영역 실시간 RPG HUD 안내 (5초 주기)
+            if (PluginMain.Config.EnableHudBroadcast && (DateTime.UtcNow - _lastHudTick).TotalSeconds >= 5)
+            {
+                _lastHudTick = DateTime.UtcNow;
+                foreach (var player in TShock.Players)
+                {
+                    if (player == null || !player.Active || !player.IsLoggedIn) continue;
+                    var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
+                    int lvl = PluginMain.ExpService.GetLevel(player.Account.Name);
+                    long curExp = PluginMain.ExpService.GetCurrentLevelExpProgress(player.Account.Name);
+                    long reqExp = PluginMain.ExpService.GetExpToNextLevel(lvl);
+                    long money = PluginMain.EconomyService.GetBalance(player.Account.Name);
+                    var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+
+                    string titleStr = title != null ? $"[{title.Name}] " : "";
+                    string hud = $"🌱 {titleStr}{player.Name} | {rpg.Job} Lv.{lvl} ({curExp:N0}/{reqExp:N0}) | 💰 {money:N0} {PluginMain.Config.CurrencyName}";
+                    
+                    // 채팅창 도배 없이 상태바/알림으로 가볍게 출력
+                    player.SendMessage(hud, new Color(166, 227, 161));
                 }
             }
         }
@@ -183,10 +302,13 @@ namespace TShockEconomyExp.Handlers
                 PluginMain.ExpService.AddExp(player.Account.Name, exp, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
                 PluginMain.EconomyService.AddBalance(player.Account.Name, money, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
 
+                // 🌟 머리 위에 플로팅 텍스트 팝업
+                ShowCombatText(player, $"+{exp} EXP! (+{money}골드)", Color.Cyan);
+
                 if (fCfg.NotifyInChat)
                 {
                     string targetType = isCrate ? "🎁 희귀 상자 낚시!" : "🐟 물고기 낚시 성공!";
-                    player.SendMessage($"[낚시] {targetType} +{exp:N0} EXP | +{money:N0} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Aqua);
+                    player.SendMessage($"[낚시] {targetType} +{exp:N0} EXP | +{money:N0} {PluginMain.Config.CurrencyName}", Color.Aqua);
                 }
             }
         }
@@ -236,20 +358,16 @@ namespace TShockEconomyExp.Handlers
                     PluginMain.EconomyService.AddBalance(player.Account.Name, money, $"광물 채광: {reward.OreName}");
                 }
 
+                // 🌟 머리 위 플로팅 텍스트 팝업
+                ShowCombatText(player, $"+{exp} EXP (+{money}골드)", Color.Orange);
+
                 if (mCfg.NotifyInChat)
                 {
-                    player.SendMessage($"[채광] {reward.OreName}! +{exp} EXP | +{money} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Orange);
+                    player.SendMessage($"[채광] {reward.OreName}! +{exp} EXP | +{money} {PluginMain.Config.CurrencyName}", Color.Orange);
                 }
             }
         }
 
-        /// <summary>
-        /// 🌟 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 스폰 난이도 스케일링
-        /// - 몬스터가 소환될 때, 그 몬스터 주변에 있는 플레이어를 감지합니다.
-        /// - 플레이어가 '서버 스폰포인트(중앙)' 근처에 머물면 ➡️ 약한 몬스터 (기본 스펙)
-        /// - 플레이어가 '바다 쪽(맵 좌/우 끝)'으로 나아가 있으면 ➡️ 그 플레이어 주변 몬스터는 강한 몬스터로 스펙 강화!
-        /// - 플레이어마다 위치가 다르므로, 스폰에 있는 유저는 약한 몬스터를 만나고, 바다에 간 유저는 강한 몬스터를 만납니다.
-        /// </summary>
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
             var cfg = PluginMain.Config.DistanceScaling;
@@ -265,7 +383,6 @@ namespace TShockEconomyExp.Handlers
             double npcTileX = npc.position.X / 16.0;
             double npcTileY = npc.position.Y / 16.0;
 
-            // 1. 몬스터 근처에 있는 플레이어(해당 스폰 지역에 위치한 유저) 감지
             TSPlayer? nearbyPlayer = null;
             double minPlayerDistance = double.MaxValue;
 
@@ -284,18 +401,15 @@ namespace TShockEconomyExp.Handlers
 
             if (nearbyPlayer == null) return;
 
-            // 2. 서버 스폰포인트(월드 기본 스폰: Main.spawnTileX, Main.spawnTileY)
             double serverSpawnTileX = Main.spawnTileX;
             double serverSpawnTileY = Main.spawnTileY;
 
-            // 3. 몬스터/플레이어가 서버 스폰포인트로부터 얼마나 멀리 떨어져 있는지 계산
             double playerTileX = nearbyPlayer.X / 16.0;
             double playerTileY = nearbyPlayer.Y / 16.0;
 
             double dx = Math.Abs(playerTileX - serverSpawnTileX);
             double dy = Math.Abs(playerTileY - serverSpawnTileY);
 
-            // 바다(맵 좌우 끝) 기준이 자연스러우므로 기본 HorizontalOnly 또는 설정된 모드에 따름
             double distanceTiles = cfg.DistanceCalculationMode.ToLowerInvariant() switch
             {
                 "horizontalonly" => dx,
@@ -303,10 +417,8 @@ namespace TShockEconomyExp.Handlers
                 _ => Math.Sqrt(dx * dx + dy * dy)
             };
 
-            // 서버 스폰포인트 중심 안전지대 반경 이내의 플레이어 주변에는 기본 몬스터 등장
             if (distanceTiles <= cfg.SafeZoneTileRadius) return;
 
-            // 서버 스폰포인트에서 바다 쪽으로 멀어진 플레이어 주변에는 강력한 몬스터 등장!
             double effectiveDistance = distanceTiles - cfg.SafeZoneTileRadius;
             double steps = effectiveDistance / Math.Max(1.0, cfg.TilesPerScalingStep);
 
@@ -325,7 +437,7 @@ namespace TShockEconomyExp.Handlers
                 npc.damage = (int)(npc.damage * damageMultiplier);
             }
 
-            NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
+            NetMessage.SendData(23, -1, -1, null, npcIndex);
         }
 
         private static void OnNpcStrike(NpcStrikeEventArgs args)
@@ -346,7 +458,8 @@ namespace TShockEconomyExp.Handlers
             if (baseDamage <= 0) return;
 
             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
-            double bonusRatio = (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
+            // 🌟 힘(STR): 1포인트당 공격력 +2.0% 증폭
+            double bonusRatio = rpg.Strength * 0.02;
 
             var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
             if (title != null && title.BonusDamageRatio > 0)
@@ -411,6 +524,7 @@ namespace TShockEconomyExp.Handlers
                     {
                         PluginMain.EconomyService.AddBalance(member.Account.Name, sharedMoney, $"파티 사냥: {npc.FullName}");
                     }
+                    ShowCombatText(member, $"+{sharedExp} EXP", Color.LightGreen);
                 }
             }
             else
@@ -423,11 +537,17 @@ namespace TShockEconomyExp.Handlers
                 {
                     PluginMain.EconomyService.AddBalance(player.Account.Name, totalMoneyGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
                 }
+
+                // 🌟 머리 위 플로팅 텍스트 팝업 (경험치/골드)
+                if (totalExpGain > 0 || totalMoneyGain > 0)
+                {
+                    ShowCombatText(player, $"+{totalExpGain} EXP (+{totalMoneyGain}G)", Color.Yellow);
+                }
             }
 
             if (PluginMain.Config.NotifyRewardsInChat && (totalExpGain > 0 || totalMoneyGain > 0))
             {
-                player.SendMessage($"[전투] +{totalExpGain:N0} EXP | +{totalMoneyGain:N0} {PluginMain.Config.CurrencyName} (보너스: +{bonusDamage} dmg)", Microsoft.Xna.Framework.Color.Yellow);
+                player.SendMessage($"[전투] +{totalExpGain:N0} EXP | +{totalMoneyGain:N0} {PluginMain.Config.CurrencyName} (보너스: +{bonusDamage} dmg)", Color.Yellow);
             }
         }
 
@@ -455,6 +575,7 @@ namespace TShockEconomyExp.Handlers
                     PluginMain.ExpService.AddExp(player.Account.Name, qExp, "퀘스트 완료 보상");
                     PluginMain.EconomyService.AddBalance(player.Account.Name, qMoney, "퀘스트 완료 보상");
                     player.SendSuccessMessage($"🎉 [퀘스트 완료!] 토벌 목표를 달성했습니다! (+{qExp:N0} EXP, +{qMoney:N0} {PluginMain.Config.CurrencyName})");
+                    ShowCombatText(player, "퀘스트 완료! +보상", Color.Gold);
                 }
                 else
                 {
@@ -485,7 +606,8 @@ namespace TShockEconomyExp.Handlers
 
             if (npc.boss)
             {
-                TShock.Utils.Broadcast($"[보스 토벌] {player.Name} 님이 {npc.FullName}을(를) 토벌했습니다! (보너스: +{bonusExp:N0} EXP, +{bonusMoney:N0} {PluginMain.Config.CurrencyName})", Microsoft.Xna.Framework.Color.Gold);
+                TShock.Utils.Broadcast($"[보스 토벌] {player.Name} 님이 {npc.FullName}을(를) 토벌했습니다! (보너스: +{bonusExp:N0} EXP, +{bonusMoney:N0} {PluginMain.Config.CurrencyName})", Color.Gold);
+                ShowCombatText(player, "BOSS KILLED!", Color.Gold);
             }
         }
 

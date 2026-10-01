@@ -1,5 +1,6 @@
 using Terraria;
 using TShockAPI;
+using TShockEconomyExp.Handlers;
 
 namespace TShockEconomyExp.Commands
 {
@@ -210,7 +211,12 @@ namespace TShockEconomyExp.Commands
                 item.Prefix(-1);
             }
 
-            NetMessage.SendData((int)PacketTypes.PlayerSlot, -1, -1, null, args.Player.Index, selectedSlot, item.prefix);
+            // 🌟 클라이언트 인벤토리 즉시 동기화 (NetMessage & TShock SSC 저장)
+            NetMessage.SyncOnePlayer_ItemArray(args.Player.Index, -1, -1, tPlayer.inventory, selectedSlot);
+            args.Player.SaveServerCharacter();
+
+            // 🌟 머리 위 플로팅 텍스트 팝업 (강화 성공!)
+            GameHooksHandler.ShowCombatText(args.Player, $"[{item.AffixName()}] 강화 성공!", Microsoft.Xna.Framework.Color.Aquamarine);
 
             args.Player.SendSuccessMessage($"✨ [강화 성공] {cost:N0} {PluginMain.Config.CurrencyName} 소모 -> [{item.AffixName()}] (으)로 재련되었습니다!");
         }
@@ -464,10 +470,10 @@ namespace TShockEconomyExp.Commands
 
             args.Player.SendInfoMessage($"====== [{args.Player.Name} RPG 캐릭터 정보] ======");
             args.Player.SendInfoMessage($"🗡️ 직업: {rpg.Job} | ⭐ 레벨: Lv.{level}");
-            args.Player.SendInfoMessage($"💪 힘(STR): {rpg.Strength} (공격력 +{(rpg.Strength * 1.5):F1}%)");
-            args.Player.SendInfoMessage($"🏹 민첩(DEX): {rpg.Dexterity} (공격력 +{(rpg.Dexterity * 1.5):F1}%)");
-            args.Player.SendInfoMessage($"🔮 지능(INT): {rpg.Intelligence} (공격력 +{(rpg.Intelligence * 1.5):F1}%)");
-            args.Player.SendInfoMessage($"❤️ 체력(VIT): {rpg.Vitality}");
+            args.Player.SendInfoMessage($"💪 힘(STR): {rpg.Strength} (공격력 +{(rpg.Strength * 2.0):F1}%)");
+            args.Player.SendInfoMessage($"🏹 민첩(DEX): {rpg.Dexterity} (이동속도 / 신속)");
+            args.Player.SendInfoMessage($"🔮 지능(INT): {rpg.Intelligence} (최대 마나 +{rpg.Intelligence * 5})");
+            args.Player.SendInfoMessage($"❤️ 체력(VIT): {rpg.Vitality} (최대 체력 +{rpg.Vitality * 5})");
             args.Player.SendSuccessMessage($"🔥 보유 스탯 포인트: {rpg.StatPoints} 포인트");
             args.Player.SendInfoMessage("포인트 투자: /스탯분배 [힘|민첩|지능|체력] [수량] | 초기화: /스탯초기화");
         }
@@ -597,7 +603,8 @@ namespace TShockEconomyExp.Commands
             {
                 string buyStr = item.BuyPrice > 0 ? $"{item.BuyPrice:N0}원" : "구매불가";
                 string sellStr = item.SellPrice > 0 ? $"{item.SellPrice:N0}원" : "판매불가";
-                args.Player?.SendInfoMessage($"[{item.Category}] {item.Name} - 구매: {buyStr} | 판매: {sellStr}");
+                // 🌟 테라리아 아이템 태그 [i:ID] 지원 (채팅창에서 아이콘으로 표시됨)
+                args.Player?.SendInfoMessage($"[i:{item.NetId}] [{item.Category}] {item.Name} - 구매: {buyStr} | 판매: {sellStr}");
             }
             args.Player?.SendInfoMessage("구매: /구매 [이름] [수량] | 판매: /판매 [이름] [수량]");
         }

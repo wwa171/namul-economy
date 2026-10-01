@@ -19,45 +19,40 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
-    /// 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 강화 설정
-    /// 몬스터를 스폰시킨(주변에 있는) 플레이어가 서버 스폰포인트에서 멀리 떨어져 있을수록(바다, 맵 양 끝 등) 몬스터가 강화됨
+    /// 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 강화 및 스폰율 설정
     /// </summary>
     public class DistanceScalingConfig
     {
         [JsonProperty("Enabled")]
         public bool Enabled { get; set; } = true;
 
-        // 거리 계산 모드: "HorizontalOnly"(바다/맵 좌우 끝 중심 X축 거리), "Euclidean"(직선거리), "Taxicab"(맨해튼거리)
         [JsonProperty("DistanceCalculationMode")]
         public string DistanceCalculationMode { get; set; } = "HorizontalOnly";
 
-        // 서버 스폰포인트 중심 안전 지대 반경 (타일 단위, 기본 200타일 = 약 3200픽셀)
         [JsonProperty("SafeZoneTileRadius")]
         public double SafeZoneTileRadius { get; set; } = 200.0;
 
-        // 스폰지점에서 멀어질 때 강화 스텝 거리 (타일 단위, 기본 100타일마다 강화)
         [JsonProperty("TilesPerScalingStep")]
         public double TilesPerScalingStep { get; set; } = 100.0;
 
-        // 스텝(100타일)당 증가하는 체력 배율 (기본 +5%)
         [JsonProperty("HealthIncreasePerStep")]
         public double HealthIncreasePerStep { get; set; } = 0.05;
 
-        // 스텝(100타일)당 증가하는 공격력 배율 (기본 +3%)
         [JsonProperty("DamageIncreasePerStep")]
         public double DamageIncreasePerStep { get; set; } = 0.03;
 
-        // 최대 허용 체력 배율 (최대 10배)
         [JsonProperty("MaxHealthMultiplier")]
         public double MaxHealthMultiplier { get; set; } = 10.0;
 
-        // 최대 허용 공격력 배율 (최대 5배)
         [JsonProperty("MaxDamageMultiplier")]
         public double MaxDamageMultiplier { get; set; } = 5.0;
 
-        // 거리로 강해진 만큼 경험치/골드 보상도 비례 증가 여부
         [JsonProperty("ScaleRewardsWithDistance")]
         public bool ScaleRewardsWithDistance { get; set; } = true;
+
+        // 🌟 멀리 나갈수록 스폰율(전투/워터캔들 버프 등) 동적 증가 설정
+        [JsonProperty("IncreaseSpawnRateWithDistance")]
+        public bool IncreaseSpawnRateWithDistance { get; set; } = true;
     }
 
     public class MiningConfig
@@ -191,6 +186,18 @@ namespace TShockEconomyExp.Config
 
         [JsonProperty("NotifyRewardsInChat")]
         public bool NotifyRewardsInChat { get; set; } = false;
+
+        // 🌟 머리 위 텍스트(Floating CombatText) 팝업 활성화
+        [JsonProperty("EnableFloatingCombatText")]
+        public bool EnableFloatingCombatText { get; set; } = true;
+
+        // 🌟 미니맵/상태창 HUD 실시간 브로드캐스트 활성화
+        [JsonProperty("EnableHudBroadcast")]
+        public bool EnableHudBroadcast { get; set; } = true;
+
+        // 🌟 서버사이드 캐릭터(SSC) 필수 활성화 강제 체크 (비활성화 시 플러그인 보호 모드)
+        [JsonProperty("RequireServerSideCharacter")]
+        public bool RequireServerSideCharacter { get; set; } = true;
 
         [JsonProperty("DefaultExpPerDamage")]
         public double DefaultExpPerDamage { get; set; } = 0.02;
