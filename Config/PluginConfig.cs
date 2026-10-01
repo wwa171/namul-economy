@@ -293,6 +293,21 @@ namespace TShockEconomyExp.Config
         public float DefenseFactor { get; set; } = 1.0f;
     }
 
+    
+    public class RandomAffixConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 보스/몬스터가 드롭한 장비에 무작위 접두사(Prefix) 부여 확률 (0.0 ~ 1.0, 기본 40%)
+        [JsonProperty("AffixChance")]
+        public double AffixChance { get; set; } = 0.4;
+
+        // 보스 처치 시 드롭 장비에 명품 접두사(Godly, Legendary 등) 우선 배정 확률
+        [JsonProperty("BossHighTierAffixChance")]
+        public double BossHighTierAffixChance { get; set; } = 0.7;
+    }
+
     public class PluginConfig
     {
         // 🌟 장비 착용/사용 레벨 제한 설정
@@ -302,6 +317,10 @@ namespace TShockEconomyExp.Config
         // 🌟 마스터모드 특화 밸런스 설정
         [JsonProperty("MasterBalance")]
         public MasterModeBalanceConfig MasterBalance { get; set; } = new();
+
+        // 🌟 장비 드롭 시 무작위 스탯/접두사(Affix) 룰렛 시스템
+        [JsonProperty("RandomAffix")]
+        public RandomAffixConfig RandomAffix { get; set; } = new();
 
         [JsonProperty("CurrencyName")]
         public string CurrencyName { get; set; } = "골드";

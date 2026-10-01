@@ -248,16 +248,37 @@ namespace TShockEconomyExp.Handlers
                     SyncPlayerStats(player);
 
                     var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
-                    List<int>? buffsToApply = rpg.Job switch
-                    {
-                        "전사" => pCfg.WarriorBuffs,
-                        "궁수" => pCfg.RangerBuffs,
-                        "마법사" => pCfg.MageBuffs,
-                        "소환사" => pCfg.SummonerBuffs,
-                        _ => null
-                    };
+                    int pLvl = PluginMain.ExpService.GetLevel(player.Account.Name);
 
-                    if (pCfg.Enabled && buffsToApply != null && buffsToApply.Count > 0)
+                    List<int> buffsToApply = new();
+                    if (pCfg.Enabled)
+                    {
+                        switch (rpg.Job)
+                        {
+                            case "전사":
+                                buffsToApply.AddRange(pCfg.WarriorBuffs);
+                                if (pLvl >= 30) buffsToApply.Add(113); // 분노 (Wrath)
+                                if (pLvl >= 60) buffsToApply.Add(117); // 인듀런스 (Endurance)
+                                break;
+                            case "궁수":
+                                buffsToApply.AddRange(pCfg.RangerBuffs);
+                                if (pLvl >= 30) buffsToApply.Add(114); // 분노 (Rage - 치명타)
+                                if (pLvl >= 60) buffsToApply.Add(111); // 탄약 보존 (Ammo Reservation)
+                                break;
+                            case "마법사":
+                                buffsToApply.AddRange(pCfg.MageBuffs);
+                                if (pLvl >= 30) buffsToApply.Add(107); // 투시 (Clairvoyance)
+                                if (pLvl >= 60) buffsToApply.Add(114); // 분노 (Rage)
+                                break;
+                            case "소환사":
+                                buffsToApply.AddRange(pCfg.SummonerBuffs);
+                                if (pLvl >= 30) buffsToApply.Add(113); // 분노 (Wrath)
+                                if (pLvl >= 60) buffsToApply.Add(117); // 인듀런스 (Endurance)
+                                break;
+                        }
+                    }
+
+                    if (buffsToApply.Count > 0)
                     {
                         foreach (int buffId in buffsToApply)
                         {
@@ -442,6 +463,26 @@ namespace TShockEconomyExp.Handlers
 
             int itemId = args.Type;
             if (itemId <= 0) return;
+
+            // 🌟 장비 드롭 시 무작위 스탯/접두사(Affix) 룰렛
+            var aCfg = PluginMain.Config.RandomAffix;
+            if (aCfg != null && aCfg.Enabled)
+            {
+                Item testItem = new Item();
+                testItem.SetDefaults(itemId);
+                if (testItem.maxStack == 1 && (testItem.damage > 0 || testItem.defense > 0 || testItem.accessory))
+                {
+                    double roll = Main.rand.NextDouble();
+                    if (roll <= aCfg.AffixChance)
+                    {
+                        testItem.Prefix(-1); // 무작위 접두사 재련
+                        if (testItem.prefix > 0)
+                        {
+                            ShowCombatText(player, $"✨ [{testItem.AffixName()}] 드롭!", Color.Gold);
+                        }
+                    }
+                }
+            }
 
             bool isCrate = (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208) || (itemId >= 3979 && itemId <= 4002);
             bool isFish = (itemId >= 2290 && itemId <= 2321) || (itemId >= 2425 && itemId <= 2430);

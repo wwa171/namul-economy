@@ -27,6 +27,7 @@ namespace TShockEconomyExp
         public static IExpService ExpService { get; private set; } = null!;
         public static RpgService RpgService { get; private set; } = null!;
         public static TitleService TitleService { get; private set; } = null!;
+        public static AuctionService AuctionService { get; private set; } = null!;
 
         public PluginMain(Main game) : base(game)
         {
@@ -54,6 +55,7 @@ namespace TShockEconomyExp
             ExpService = new ExpService(Database, Config);
             RpgService = new RpgService(Database);
             TitleService = new TitleService(Database, TitleConfig);
+            AuctionService = new AuctionService(Database);
 
             // 4. 레벨업 시 스탯 포인트 보너스 & 칭호 해금 체크
             ExpService.OnLevelUp += OnLevelUpEvent;

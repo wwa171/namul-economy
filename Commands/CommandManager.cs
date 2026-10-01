@@ -110,6 +110,12 @@ namespace TShockEconomyExp.Commands
             {
                 HelpText = "미니맵 아래 RPG 상태 HUD 표시를 켜거나 끕니다. (/hud [on|off])"
             });
+
+            // ================= 9. 경매장 시스템 명령어 =================
+            TShockAPI.Commands.ChatCommands.Add(new Command("economy.user", AuctionCommand, "경매장", "경매", "ah", "auction")
+            {
+                HelpText = "서버 경매장을 조회하거나 아이템을 등록/구매합니다. (/경매 목록 [페이지], /경매 등록 [가격], /경매 구매 [번호])"
+            });
         }
 
         #region HUD Toggle Handler
@@ -771,3 +777,149 @@ namespace TShockEconomyExp.Commands
         #endregion
     }
 }
+
+
+        #region Auction Handlers
+
+        private static void AuctionCommand(CommandArgs args)
+        {
+            if (args.Player == null || !args.Player.IsLoggedIn)
+            {
+                args.Player?.SendErrorMessage("로그인 후 이용할 수 있습니다.");
+                return;
+            }
+
+            if (args.Parameters.Count == 0 || args.Parameters[0] is "목록" or "list")
+            {
+                int page = 1;
+                if (args.Parameters.Count > 1 && int.TryParse(args.Parameters[1], out int p))
+                {
+                    page = Math.Max(1, p);
+                }
+
+                var listings = PluginMain.AuctionService.GetListings(page, 8);
+                args.Player.SendInfoMessage($"====== 🏛️ [서버 경매장 목록 - {page} 페이지] ======");
+                if (listings.Count == 0)
+                {
+                    args.Player.SendInfoMessage("현재 등록된 경매 물품이 없습니다.");
+                }
+                else
+                {
+                    foreach (var item in listings)
+                    {
+                        string prefixStr = item.Prefix > 0 ? $"[{item.ItemName}]" : item.ItemName;
+                        args.Player.SendSuccessMessage($"[#{item.Id}] {prefixStr} x{item.Stack} | 가격: {item.Price:N0} {PluginMain.Config.CurrencyName} | 판매자: {item.SellerAccount}");
+                    }
+                }
+                args.Player.SendInfoMessage("구매: /경매 구매 [번호] | 등록: /경매 등록 [가격]");
+                return;
+            }
+
+            string sub = args.Parameters[0];
+            if (sub is "등록" or "sell" or "post")
+            {
+                if (args.Parameters.Count < 2 || !long.TryParse(args.Parameters[1], out long price) || price <= 0)
+                {
+                    args.Player.SendErrorMessage("사용법: /경매 등록 [판매가격] (손에 든 아이템 등록)");
+                    return;
+                }
+
+                var tPlayer = args.Player.TPlayer;
+                Item held = tPlayer.HeldItem;
+                if (held == null || held.IsAir)
+                {
+                    args.Player.SendErrorMessage("손에 등록할 아이템을 들어주세요.");
+                    return;
+                }
+
+                int netId = held.type;
+                string name = held.AffixName();
+                int stack = held.stack;
+                byte prefix = held.prefix;
+
+                int listingId = PluginMain.AuctionService.ListItem(args.Player.Account.Name, netId, name, stack, prefix, price);
+
+                // 손에 든 아이템 제거
+                tPlayer.HeldItem.TurnToAir();
+                NetMessage.SyncOnePlayer_ItemArray(args.Player.Index, -1, -1, tPlayer.inventory, tPlayer.selectedItem);
+                args.Player.SaveServerCharacter();
+
+                args.Player.SendSuccessMessage($"✨ [경매 등록 완료] [#{listingId}] {name} x{stack} (을)를 {price:N0} {PluginMain.Config.CurrencyName}에 등록했습니다!");
+                TShock.Utils.Broadcast($"🏛️ [경매장] {args.Player.Name} 님이 [{name}]을(를) {price:N0} {PluginMain.Config.CurrencyName}에 등록했습니다! (/경매)", Microsoft.Xna.Framework.Color.Gold);
+                return;
+            }
+
+            if (sub is "구매" or "buy")
+            {
+                if (args.Parameters.Count < 2 || !int.TryParse(args.Parameters[1], out int id))
+                {
+                    args.Player.SendErrorMessage("사용법: /경매 구매 [아이템번호]");
+                    return;
+                }
+
+                var listing = PluginMain.AuctionService.GetListing(id);
+                if (listing == null)
+                {
+                    args.Player.SendErrorMessage("존재하지 않거나 이미 판매된 물품입니다.");
+                    return;
+                }
+
+                if (listing.SellerAccount.Equals(args.Player.Account.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    args.Player.SendErrorMessage("본인이 등록한 물품은 구매할 수 없습니다.");
+                    return;
+                }
+
+                long balance = PluginMain.EconomyService.GetBalance(args.Player.Account.Name);
+                if (balance < listing.Price)
+                {
+                    args.Player.SendErrorMessage($"골드가 부족합니다! (필요 골드: {listing.Price:N0} {PluginMain.Config.CurrencyName} / 보유: {balance:N0})");
+                    return;
+                }
+
+                // 인벤토리 빈 공간 체크
+                var tPlayer = args.Player.TPlayer;
+                int freeSlot = -1;
+                for (int i = 0; i < 50; i++)
+                {
+                    if (tPlayer.inventory[i] == null || tPlayer.inventory[i].IsAir)
+                    {
+                        freeSlot = i;
+                        break;
+                    }
+                }
+
+                if (freeSlot == -1)
+                {
+                    args.Player.SendErrorMessage("인벤토리에 빈 공간이 없습니다.");
+                    return;
+                }
+
+                if (!PluginMain.AuctionService.RemoveListing(id))
+                {
+                    args.Player.SendErrorMessage("구매 처리에 실패했습니다. (이미 판매됨)");
+                    return;
+                }
+
+                // 구매자 잔액 차감 & 판매자 입금
+                PluginMain.EconomyService.SubtractBalance(args.Player.Account.Name, listing.Price, $"경매장 구매: {listing.ItemName}");
+                PluginMain.EconomyService.AddBalance(listing.SellerAccount, listing.Price, $"경매장 판매 대금: {listing.ItemName}");
+
+                // 구매자 인벤토리에 아이템 지급
+                Item newItem = new Item();
+                newItem.SetDefaults(listing.ItemNetId);
+                newItem.stack = listing.Stack;
+                newItem.prefix = listing.Prefix;
+
+                tPlayer.inventory[freeSlot] = newItem;
+                NetMessage.SyncOnePlayer_ItemArray(args.Player.Index, -1, -1, tPlayer.inventory, freeSlot);
+                args.Player.SaveServerCharacter();
+
+                args.Player.SendSuccessMessage($"🎉 [경매 구매 완료] [{listing.ItemName}]을(를) {listing.Price:N0} {PluginMain.Config.CurrencyName}에 구매했습니다!");
+
+                var seller = TShock.Players.FirstOrDefault(p => p != null && p.IsLoggedIn && p.Account.Name.Equals(listing.SellerAccount, StringComparison.OrdinalIgnoreCase));
+                seller?.SendSuccessMessage($"💰 [경매 판매 완료] 등록하신 [{listing.ItemName}]이(가) 판매되어 {listing.Price:N0} {PluginMain.Config.CurrencyName}이 입금되었습니다!");
+            }
+        }
+
+        #endregion

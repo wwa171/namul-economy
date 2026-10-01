@@ -9,7 +9,7 @@ namespace TShockEconomyExp.Database
     /// - tshock/economy_exp/exp_data.sqlite
     /// - tshock/economy_exp/rpg_data.sqlite
     /// </summary>
-    public class DatabaseManager
+    public partial class DatabaseManager
     {
         private readonly string _economyDbPath;
         private readonly string _expDbPath;
@@ -33,6 +33,7 @@ namespace TShockEconomyExp.Database
         public void Initialize()
         {
             InitEconomyTable();
+            InitAuctionTable();
             InitExpTable();
             InitRpgTable();
         }
