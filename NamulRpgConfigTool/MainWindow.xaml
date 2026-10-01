@@ -1,7 +1,7 @@
 <Window x:Class="NamulRpgConfigTool.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="나물 RPG 설정 에디터 (Namul RPG Config Tool)" Height="820" Width="890"
+        Title="나물 RPG 설정 에디터 (Namul RPG Config Tool)" Height="860" Width="910"
         WindowStartupLocation="CenterScreen" Background="#1E1E2E">
     <Window.Resources>
         <Style TargetType="Label">
@@ -43,7 +43,7 @@
         <DockPanel Grid.Row="0" Margin="0,0,0,14">
             <StackPanel Orientation="Vertical" DockPanel.Dock="Left">
                 <TextBlock x:Name="TxtTitle" Text="🌱 나물 RPG 통합 설정 툴" FontSize="20" FontWeight="Bold" Foreground="#A6E3A1"/>
-                <TextBlock x:Name="TxtSubtitle" Text="TShock Economy &amp; Distance Scaling GUI Editor (Vibe Coding)" FontSize="12" Foreground="#BAC2DE"/>
+                <TextBlock x:Name="TxtSubtitle" Text="TShock Economy, Distance Scaling &amp; Titles GUI Editor (Vibe Coding)" FontSize="12" Foreground="#BAC2DE"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <TextBlock x:Name="TxtLangLabel" Text="🌐 언어 / Language: " VerticalAlignment="Center" Foreground="#CDD6F4" Margin="0,0,8,0"/>
@@ -190,7 +190,31 @@
                     </StackPanel>
                 </GroupBox>
 
-                <!-- 4. 생활 콘텐츠 & 장비 재련 설정 -->
+                <!-- 4. 칭호 & 업적 시스템 설정 -->
+                <GroupBox x:Name="GrpTitles" Header="칭호 &amp; 업적 시스템 (Titles &amp; Achievements)">
+                    <StackPanel>
+                        <CheckBox x:Name="ChkTitlesEnabled" Content="채팅 칭호 접두사 및 스펙 보너스 시스템 활성화" Foreground="#CDD6F4" FontWeight="Bold" Margin="0,4,0,10" IsChecked="True"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="220"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="36"/>
+                            </Grid.RowDefinitions>
+
+                            <Label x:Name="LblPrefixFormat" Grid.Row="0" Grid.Column="0" Content="칭호 접두사 포맷:"/>
+                            <TextBox x:Name="TxtPrefixFormat" Grid.Row="0" Grid.Column="1" Text="[{0}]"/>
+
+                            <TextBlock x:Name="TxtTitleHelp" Grid.Row="0" Grid.Column="3" Grid.ColumnSpan="2" Text="* 세부 칭호 목록/보너스는 titles.json 파일에서 편집 가능합니다." Foreground="#BAC2DE" VerticalAlignment="Center" FontSize="11"/>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 5. 생활 콘텐츠 & 장비 재련 설정 -->
                 <GroupBox x:Name="GrpLifeSkills" Header="생활 콘텐츠(채광/낚시) 및 장비 재련(강화)">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -217,7 +241,7 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- 5. 파일 경로 안내 -->
+                <!-- 6. 파일 경로 안내 -->
                 <TextBlock x:Name="TxtFilePathInfo" Text="현재 불러온 경로: (기본값 세팅됨)" Foreground="#9399B2" FontSize="11" Margin="2,0,0,0"/>
             </StackPanel>
         </ScrollViewer>

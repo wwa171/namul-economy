@@ -251,7 +251,7 @@ namespace TShockEconomyExp.Database
 
         #endregion
 
-        #region RPG (Job & Stats & Quest) SQLite
+        #region RPG (Job & Stats & Quest & Titles) SQLite
 
         private SqliteConnection GetRpgConnection()
         {
@@ -282,10 +282,40 @@ namespace TShockEconomyExp.Database
                         QuestRewardExp INTEGER NOT NULL DEFAULT 0,
                         QuestRewardMoney INTEGER NOT NULL DEFAULT 0,
                         LastQuestDate TEXT NOT NULL DEFAULT '',
+                        EquippedTitleId TEXT NOT NULL DEFAULT 'novice',
+                        UnlockedTitlesJson TEXT NOT NULL DEFAULT '[""novice""]',
+                        TotalMonsterKills INTEGER NOT NULL DEFAULT 0,
+                        TotalBossKills INTEGER NOT NULL DEFAULT 0,
+                        TotalMiningCount INTEGER NOT NULL DEFAULT 0,
+                        TotalFishingCount INTEGER NOT NULL DEFAULT 0,
                         LastUpdated TEXT NOT NULL
                     );
                 ";
                 cmd.ExecuteNonQuery();
+
+                // 기존 DB 마이그레이션 호환성 (컬럼 누락 시 자동 추가)
+                string[] columns = {
+                    "EquippedTitleId TEXT NOT NULL DEFAULT 'novice'",
+                    "UnlockedTitlesJson TEXT NOT NULL DEFAULT '[\"novice\"]'",
+                    "TotalMonsterKills INTEGER NOT NULL DEFAULT 0",
+                    "TotalBossKills INTEGER NOT NULL DEFAULT 0",
+                    "TotalMiningCount INTEGER NOT NULL DEFAULT 0",
+                    "TotalFishingCount INTEGER NOT NULL DEFAULT 0"
+                };
+
+                foreach (var col in columns)
+                {
+                    try
+                    {
+                        using var alterCmd = conn.CreateCommand();
+                        alterCmd.CommandText = $"ALTER TABLE UserRpg ADD COLUMN {col};";
+                        alterCmd.ExecuteNonQuery();
+                    }
+                    catch
+                    {
+                        // 이미 컬럼이 존재하는 경우 무시
+                    }
+                }
             }
         }
 
@@ -298,7 +328,9 @@ namespace TShockEconomyExp.Database
                 cmd.CommandText = @"
                     SELECT AccountName, Job, StatPoints, Strength, Dexterity, Intelligence, Vitality,
                            ActiveQuestTarget, ActiveQuestTargetNetId, QuestRequiredCount, QuestCurrentCount,
-                           QuestRewardExp, QuestRewardMoney, LastQuestDate, LastUpdated
+                           QuestRewardExp, QuestRewardMoney, LastQuestDate,
+                           EquippedTitleId, UnlockedTitlesJson, TotalMonsterKills, TotalBossKills, TotalMiningCount, TotalFishingCount,
+                           LastUpdated
                     FROM UserRpg WHERE AccountName = $name LIMIT 1;
                 ";
                 cmd.Parameters.AddWithValue("$name", accountName);
@@ -322,7 +354,13 @@ namespace TShockEconomyExp.Database
                         QuestRewardExp = reader.GetInt64(11),
                         QuestRewardMoney = reader.GetInt64(12),
                         LastQuestDate = reader.GetString(13),
-                        LastUpdated = DateTime.Parse(reader.GetString(14))
+                        EquippedTitleId = reader.IsDBNull(14) ? "novice" : reader.GetString(14),
+                        UnlockedTitlesJson = reader.IsDBNull(15) ? "[\"novice\"]" : reader.GetString(15),
+                        TotalMonsterKills = reader.IsDBNull(16) ? 0 : reader.GetInt64(16),
+                        TotalBossKills = reader.IsDBNull(17) ? 0 : reader.GetInt64(17),
+                        TotalMiningCount = reader.IsDBNull(18) ? 0 : reader.GetInt64(18),
+                        TotalFishingCount = reader.IsDBNull(19) ? 0 : reader.GetInt64(19),
+                        LastUpdated = DateTime.Parse(reader.GetString(20))
                     };
                 }
 
@@ -335,6 +373,8 @@ namespace TShockEconomyExp.Database
                     Dexterity = 0,
                     Intelligence = 0,
                     Vitality = 0,
+                    EquippedTitleId = "novice",
+                    UnlockedTitlesJson = "[\"novice\"]",
                     LastUpdated = DateTime.UtcNow
                 };
                 SaveRpg(defaultData);
@@ -352,11 +392,15 @@ namespace TShockEconomyExp.Database
                     INSERT INTO UserRpg (
                         AccountName, Job, StatPoints, Strength, Dexterity, Intelligence, Vitality,
                         ActiveQuestTarget, ActiveQuestTargetNetId, QuestRequiredCount, QuestCurrentCount,
-                        QuestRewardExp, QuestRewardMoney, LastQuestDate, LastUpdated
+                        QuestRewardExp, QuestRewardMoney, LastQuestDate,
+                        EquippedTitleId, UnlockedTitlesJson, TotalMonsterKills, TotalBossKills, TotalMiningCount, TotalFishingCount,
+                        LastUpdated
                     ) VALUES (
                         $name, $job, $statPoints, $str, $dex, $int, $vit,
                         $target, $targetNetId, $reqCount, $curCount,
-                        $rewardExp, $rewardMoney, $questDate, $updated
+                        $rewardExp, $rewardMoney, $questDate,
+                        $titleId, $unlockedTitles, $kills, $bossKills, $mining, $fishing,
+                        $updated
                     ) ON CONFLICT(AccountName) DO UPDATE SET
                         Job = excluded.Job,
                         StatPoints = excluded.StatPoints,
@@ -371,6 +415,12 @@ namespace TShockEconomyExp.Database
                         QuestRewardExp = excluded.QuestRewardExp,
                         QuestRewardMoney = excluded.QuestRewardMoney,
                         LastQuestDate = excluded.LastQuestDate,
+                        EquippedTitleId = excluded.EquippedTitleId,
+                        UnlockedTitlesJson = excluded.UnlockedTitlesJson,
+                        TotalMonsterKills = excluded.TotalMonsterKills,
+                        TotalBossKills = excluded.TotalBossKills,
+                        TotalMiningCount = excluded.TotalMiningCount,
+                        TotalFishingCount = excluded.TotalFishingCount,
                         LastUpdated = excluded.LastUpdated;
                 ";
                 cmd.Parameters.AddWithValue("$name", data.AccountName);
@@ -387,6 +437,12 @@ namespace TShockEconomyExp.Database
                 cmd.Parameters.AddWithValue("$rewardExp", data.QuestRewardExp);
                 cmd.Parameters.AddWithValue("$rewardMoney", data.QuestRewardMoney);
                 cmd.Parameters.AddWithValue("$questDate", data.LastQuestDate);
+                cmd.Parameters.AddWithValue("$titleId", data.EquippedTitleId);
+                cmd.Parameters.AddWithValue("$unlockedTitles", data.UnlockedTitlesJson);
+                cmd.Parameters.AddWithValue("$kills", data.TotalMonsterKills);
+                cmd.Parameters.AddWithValue("$bossKills", data.TotalBossKills);
+                cmd.Parameters.AddWithValue("$mining", data.TotalMiningCount);
+                cmd.Parameters.AddWithValue("$fishing", data.TotalFishingCount);
                 cmd.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("o"));
                 cmd.ExecuteNonQuery();
             }

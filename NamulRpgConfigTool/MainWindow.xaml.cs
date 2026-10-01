@@ -36,7 +36,7 @@ namespace NamulRpgConfigTool
             if (en)
             {
                 TxtTitle.Text = "🌱 Namul RPG Unified Config Tool";
-                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor (Vibe Coding)";
+                TxtSubtitle.Text = "TShock Economy, Distance Scaling & Titles GUI Editor (Vibe Coding)";
                 TxtLangLabel.Text = "🌐 Language: ";
 
                 GrpGeneral.Header = "General Economy & EXP Settings";
@@ -65,6 +65,11 @@ namespace NamulRpgConfigTool
                 LblPartyBonus.Content = "Bonus EXP / Member (+%):";
                 ChkPartyMoney.Content = "Distribute Gold Evenly Among Members";
 
+                GrpTitles.Header = "Titles & Achievements System";
+                ChkTitlesEnabled.Content = "Enable Chat Title Prefix & Stat Bonus";
+                LblPrefixFormat.Content = "Prefix Format:";
+                TxtTitleHelp.Text = "* Detailed titles and conditions can be customized in titles.json.";
+
                 GrpLifeSkills.Header = "Life Skills (Mining/Fishing) & Item Enhancement";
                 ChkMiningEnabled.Content = "Enable Mining Rewards";
                 ChkFishingEnabled.Content = "Enable Fishing Rewards";
@@ -83,7 +88,7 @@ namespace NamulRpgConfigTool
             else
             {
                 TxtTitle.Text = "🌱 나물 RPG 통합 설정 툴";
-                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor (Vibe Coding)";
+                TxtSubtitle.Text = "TShock Economy, Distance Scaling & Titles GUI Editor (Vibe Coding)";
                 TxtLangLabel.Text = "🌐 언어 / Language: ";
 
                 GrpGeneral.Header = "기본 경제 및 경험치 설정";
@@ -111,6 +116,11 @@ namespace NamulRpgConfigTool
                 LblPartyRadius.Content = "공유 가능 반경 (타일):";
                 LblPartyBonus.Content = "팀원당 보너스 경험치 (+%):";
                 ChkPartyMoney.Content = "골드도 팀원들과 균등 분배";
+
+                GrpTitles.Header = "칭호 & 업적 시스템 (Titles & Achievements)";
+                ChkTitlesEnabled.Content = "채팅 칭호 접두사 및 스펙 보너스 시스템 활성화";
+                LblPrefixFormat.Content = "칭호 접두사 포맷:";
+                TxtTitleHelp.Text = "* 세부 칭호 목록/보너스는 titles.json 파일에서 편집 가능합니다.";
 
                 GrpLifeSkills.Header = "생활 콘텐츠(채광/낚시) 및 장비 재련(강화)";
                 ChkMiningEnabled.Content = "광물 채광 보상 활성화";

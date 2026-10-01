@@ -92,7 +92,78 @@ namespace TShockEconomyExp.Commands
             {
                 HelpText = "손에 든 장비를 골드를 소모하여 강화/재련합니다. (/강화)"
             });
+
+            // ================= 7. 칭호 & 업적(Title) 시스템 명령어 =================
+            TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", TitleCommand, "칭호", "업적", "title", "titles")
+            {
+                HelpText = "보유한 칭호 목록 및 업적 현황을 확인합니다. (/칭호, /칭호장착 [칭호이름])"
+            });
+
+            TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", EquipTitleCommand, "칭호장착", "칭호변경", "equiptitle")
+            {
+                HelpText = "보유한 칭호를 장착합니다. (/칭호장착 [칭호이름])"
+            });
         }
+
+        #region Title Handlers
+
+        private static void TitleCommand(CommandArgs args)
+        {
+            if (args.Player == null || !args.Player.IsLoggedIn)
+            {
+                args.Player?.SendErrorMessage("로그인 후 이용할 수 있습니다.");
+                return;
+            }
+
+            var rpg = PluginMain.RpgService.GetRpgData(args.Player.Account.Name);
+            var unlockedIds = PluginMain.TitleService.GetUnlockedTitleIds(args.Player.Account.Name);
+            var equipped = PluginMain.TitleService.GetEquippedTitle(args.Player.Account.Name);
+
+            args.Player.SendInfoMessage($"====== [{args.Player.Name} 칭호 & 업적 보관함] ======");
+            args.Player.SendInfoMessage($"👑 현재 장착 중인 칭호: [{(equipped?.Name ?? "없음")}]");
+            args.Player.SendInfoMessage($"📊 내 업적 통계: 몬스터 킬({rpg.TotalMonsterKills}) | 보스 토벌({rpg.TotalBossKills}) | 채광({rpg.TotalMiningCount}) | 낚시({rpg.TotalFishingCount})");
+            args.Player.SendInfoMessage("--------------------------------------");
+
+            foreach (var t in PluginMain.TitleConfig.Titles)
+            {
+                bool isUnlocked = unlockedIds.Contains(t.Id, StringComparer.OrdinalIgnoreCase);
+                string status = isUnlocked ? "✅ [해금완료]" : "🔒 [미달성]";
+                string bonus = "";
+                if (t.BonusDamageRatio > 0) bonus += $" 공+{(t.BonusDamageRatio * 100):F0}%";
+                if (t.BonusExpRatio > 0) bonus += $" EXP+{(t.BonusExpRatio * 100):F0}%";
+                if (t.BonusMoneyRatio > 0) bonus += $" 골드+{(t.BonusMoneyRatio * 100):F0}%";
+
+                args.Player.SendInfoMessage($"{status} [{t.Name}] - {t.Description}{bonus}");
+            }
+
+            args.Player.SendInfoMessage("칭호 장착 방법: /칭호장착 [칭호이름]");
+        }
+
+        private static void EquipTitleCommand(CommandArgs args)
+        {
+            if (args.Player == null || !args.Player.IsLoggedIn)
+            {
+                args.Player?.SendErrorMessage("로그인 후 이용할 수 있습니다.");
+                return;
+            }
+
+            if (args.Parameters.Count < 1)
+            {
+                args.Player.SendErrorMessage("사용법: /칭호장착 [칭호이름 또는 ID]");
+                return;
+            }
+
+            string titleQuery = args.Parameters[0];
+            if (!PluginMain.TitleService.EquipTitle(args.Player.Account.Name, titleQuery, out string assignedName))
+            {
+                args.Player.SendErrorMessage("아직 해금되지 않았거나 존재하지 않는 칭호입니다. (/칭호 로 목록 확인)");
+                return;
+            }
+
+            args.Player.SendSuccessMessage($"✨ [{assignedName}] 칭호를 장착했습니다! 채팅 시 칭호가 표시되며 스펙 보너스가 적용됩니다.");
+        }
+
+        #endregion
 
         #region Enhance Handler
 
@@ -133,15 +204,12 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            // 테라리아 바닐라 재련 프리픽스 부여
-            // Prefix(-2) = 해당 아이템 타입에 맞는 랜덤 접두사 자동 선택 및 갱신
             bool rolled = item.Prefix(-2);
             if (!rolled)
             {
                 item.Prefix(-1);
             }
 
-            // 인벤토리 동기화 패킷 전송 (패킷 5번: PlayerSlot)
             NetMessage.SendData((int)PacketTypes.PlayerSlot, -1, -1, null, args.Player.Index, selectedSlot, item.prefix);
 
             args.Player.SendSuccessMessage($"✨ [강화 성공] {cost:N0} {PluginMain.Config.CurrencyName} 소모 -> [{item.AffixName()}] (으)로 재련되었습니다!");

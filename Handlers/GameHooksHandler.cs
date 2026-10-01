@@ -16,6 +16,7 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.NpcKilled.Register(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Register(plugin, OnGreetPlayer);
             ServerApi.Hooks.GameUpdate.Register(plugin, OnGameUpdate);
+            ServerApi.Hooks.ServerChat.Register(plugin, OnServerChat);
 
             // TShock 채광(TileEdit) 및 낚시(ItemDrop) 이벤트 등록
             GetDataHandlers.TileEdit.Register(OnTileEdit);
@@ -29,9 +30,55 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.NpcKilled.Deregister(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Deregister(plugin, OnGreetPlayer);
             ServerApi.Hooks.GameUpdate.Deregister(plugin, OnGameUpdate);
+            ServerApi.Hooks.ServerChat.Deregister(plugin, OnServerChat);
 
             GetDataHandlers.TileEdit.UnRegister(OnTileEdit);
             GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
+        }
+
+        /// <summary>
+        /// 🌟 채팅 메시지 칭호(Title) 프리픽스 실시간 적용
+        /// </summary>
+        private static void OnServerChat(ServerChatEventArgs args)
+        {
+            if (args.Handled || !PluginMain.TitleConfig.Enabled) return;
+
+            // 명령어(/) 입력은 채팅 프리픽스 가로채지 않음
+            if (args.Text.StartsWith(TShock.Config.Settings.CommandSpecifier) ||
+                args.Text.StartsWith(TShock.Config.Settings.CommandSilentSpecifier))
+                return;
+
+            var player = TShock.Players[args.Who];
+            if (player == null || !player.IsLoggedIn) return;
+
+            var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+            if (title == null) return;
+
+            args.Handled = true;
+
+            // 칭호 접두사 결합: [모험의 시작] <유저이름> 메시지
+            string prefix = string.Format(PluginMain.TitleConfig.PrefixFormat, title.Name);
+            string formattedMessage = $"{prefix} {player.Group.Prefix}{player.Name}{player.Group.Suffix}: {args.Text}";
+
+            // 색상 파싱
+            var color = Microsoft.Xna.Framework.Color.White;
+            if (!string.IsNullOrEmpty(title.ColorHex) && title.ColorHex.Length == 6)
+            {
+                try
+                {
+                    byte r = Convert.ToByte(title.ColorHex.Substring(0, 2), 16);
+                    byte g = Convert.ToByte(title.ColorHex.Substring(2, 2), 16);
+                    byte b = Convert.ToByte(title.ColorHex.Substring(4, 2), 16);
+                    color = new Microsoft.Xna.Framework.Color(r, g, b);
+                }
+                catch
+                {
+                    color = Microsoft.Xna.Framework.Color.Gold;
+                }
+            }
+
+            TShock.Utils.Broadcast(formattedMessage, color);
+            TShock.Log.Info($"[Chat] {formattedMessage}");
         }
 
         private static void OnGreetPlayer(GreetPlayerEventArgs args)
@@ -50,6 +97,23 @@ namespace TShockEconomyExp.Handlers
             if (rpgData.StatPoints > 0)
             {
                 player.SendInfoMessage($"[RPG] 미분배 스탯 포인트가 {rpgData.StatPoints}개 있습니다! (/스탯분배 로 스탯을 올리세요)");
+            }
+
+            // 접속 시 칭호 자동 해금 상태 체크
+            CheckTitleUnlocks(player);
+        }
+
+        private static void CheckTitleUnlocks(TSPlayer player)
+        {
+            if (player == null || !player.IsLoggedIn) return;
+            int level = PluginMain.ExpService.GetLevel(player.Account.Name);
+            long totalExp = PluginMain.ExpService.GetTotalExp(player.Account.Name);
+            long money = PluginMain.EconomyService.GetBalance(player.Account.Name);
+
+            var unlocked = PluginMain.TitleService.CheckAndUnlockTitles(player.Account.Name, level, totalExp, money);
+            foreach (var title in unlocked)
+            {
+                player.SendSuccessMessage($"🏆 [새 칭호 해금!] '{title.Name}' - {title.Description} (/칭호장착 {title.Name})");
             }
         }
 
@@ -91,7 +155,7 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 낚시(Fishing) 보상: 플레이어가 낚아올려 드롭된 아이템 감지
+        /// 🌟 낚시(Fishing) 보상
         /// </summary>
         private static void OnItemDrop(object? sender, GetDataHandlers.ItemDropEventArgs args)
         {
@@ -109,6 +173,9 @@ namespace TShockEconomyExp.Handlers
 
             if (isCrate || isFish)
             {
+                PluginMain.TitleService.IncrementStat(player.Account.Name, "fishing", 1);
+                CheckTitleUnlocks(player);
+
                 long exp = fCfg.DefaultExp;
                 long money = fCfg.DefaultMoney;
 
@@ -116,6 +183,14 @@ namespace TShockEconomyExp.Handlers
                 {
                     exp = (long)(exp * fCfg.CrateExpMultiplier);
                     money = (long)(money * fCfg.CrateMoneyMultiplier);
+                }
+
+                // 칭호 보너스 적용
+                var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+                if (title != null)
+                {
+                    if (title.BonusExpRatio > 0) exp = (long)(exp * (1.0 + title.BonusExpRatio));
+                    if (title.BonusMoneyRatio > 0) money = (long)(money * (1.0 + title.BonusMoneyRatio));
                 }
 
                 PluginMain.ExpService.AddExp(player.Account.Name, exp, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
@@ -137,7 +212,7 @@ namespace TShockEconomyExp.Handlers
             var mCfg = PluginMain.Config.Mining;
             if (!mCfg.Enabled || args.Handled) return;
 
-            if (args.Action != 0) return; // 0 = 타일 파괴
+            if (args.Action != 0) return;
 
             TSPlayer player = args.Player;
             if (player == null || !player.IsLoggedIn) return;
@@ -155,18 +230,31 @@ namespace TShockEconomyExp.Handlers
 
             if (mCfg.OreRewards != null && mCfg.OreRewards.TryGetValue(key, out var reward))
             {
-                if (reward.Exp > 0)
+                PluginMain.TitleService.IncrementStat(player.Account.Name, "mining", 1);
+                CheckTitleUnlocks(player);
+
+                long exp = reward.Exp;
+                long money = reward.Money;
+
+                var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+                if (title != null)
                 {
-                    PluginMain.ExpService.AddExp(player.Account.Name, reward.Exp, $"광물 채광: {reward.OreName}");
+                    if (title.BonusExpRatio > 0) exp = (long)(exp * (1.0 + title.BonusExpRatio));
+                    if (title.BonusMoneyRatio > 0) money = (long)(money * (1.0 + title.BonusMoneyRatio));
                 }
-                if (reward.Money > 0)
+
+                if (exp > 0)
                 {
-                    PluginMain.EconomyService.AddBalance(player.Account.Name, reward.Money, $"광물 채광: {reward.OreName}");
+                    PluginMain.ExpService.AddExp(player.Account.Name, exp, $"광물 채광: {reward.OreName}");
+                }
+                if (money > 0)
+                {
+                    PluginMain.EconomyService.AddBalance(player.Account.Name, money, $"광물 채광: {reward.OreName}");
                 }
 
                 if (mCfg.NotifyInChat)
                 {
-                    player.SendMessage($"[채광] {reward.OreName}! +{reward.Exp} EXP | +{reward.Money} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Orange);
+                    player.SendMessage($"[채광] {reward.OreName}! +{exp} EXP | +{money} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Orange);
                 }
             }
         }
@@ -226,7 +314,7 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 몬스터 피격 시 (데미지 비례 보상 및 파티 사냥 공유 분배)
+        /// 몬스터 피격 시 (데미지 비례 보상, 칭호 보너스, 파티 사냥 공유 분배)
         /// </summary>
         private static void OnNpcStrike(NpcStrikeEventArgs args)
         {
@@ -248,6 +336,13 @@ namespace TShockEconomyExp.Handlers
             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
             double bonusRatio = (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
 
+            // 🌟 칭호 공격력 보너스 추가 합산
+            var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+            if (title != null && title.BonusDamageRatio > 0)
+            {
+                bonusRatio += title.BonusDamageRatio;
+            }
+
             int bonusDamage = (int)(baseDamage * bonusRatio);
             int totalDealtDamage = baseDamage;
 
@@ -268,7 +363,14 @@ namespace TShockEconomyExp.Handlers
             long totalExpGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
             long totalMoneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
 
-            // 🌟 파티/팀 사냥 경험치·골드 공유
+            // 칭호 경험치/골드 획득량 보너스
+            if (title != null)
+            {
+                if (title.BonusExpRatio > 0) totalExpGain = (long)(totalExpGain * (1.0 + title.BonusExpRatio));
+                if (title.BonusMoneyRatio > 0) totalMoneyGain = (long)(totalMoneyGain * (1.0 + title.BonusMoneyRatio));
+            }
+
+            // 파티 사냥 분배
             var partyCfg = PluginMain.Config.Party;
             List<TSPlayer> nearbyTeamMembers = new();
 
@@ -333,6 +435,10 @@ namespace TShockEconomyExp.Handlers
 
             TSPlayer player = TShock.Players[targetIndex];
             if (player == null || !player.IsLoggedIn) return;
+
+            // 킬 카운트 통계 누적 및 칭호 해금 검사
+            PluginMain.TitleService.IncrementStat(player.Account.Name, npc.boss ? "boss" : "kill", 1);
+            CheckTitleUnlocks(player);
 
             if (PluginMain.RpgService.ProgressQuest(player.Account.Name, npc.netID, npc.FullName, out bool completed, out long qExp, out long qMoney))
             {
