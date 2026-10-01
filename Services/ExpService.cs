@@ -76,7 +76,12 @@ namespace TShockEconomyExp.Services
                 while (data.Level < _config.MaxLevel)
                 {
                     long reqExp = GetExpToNextLevel(data.Level);
-                    long currentProgress = GetCurrentLevelExpProgress(accountName);
+                    long totalRequiredForPrevLevels = 0;
+                    for (int lvl = 1; lvl < data.Level; lvl++)
+                    {
+                        totalRequiredForPrevLevels += GetExpToNextLevel(lvl);
+                    }
+                    long currentProgress = Math.Max(0, data.TotalExp - totalRequiredForPrevLevels);
 
                     if (currentProgress >= reqExp)
                     {
