@@ -16,7 +16,9 @@ namespace TShockEconomyExp.Handlers
         private static DateTime _lastHudTick = DateTime.UtcNow;
         private static readonly int[] _lastHeldItemNetId = new int[Main.maxPlayers];
         private static readonly byte[] _lastHeldItemPrefix = new byte[Main.maxPlayers];
-        private static readonly DateTime[] _itemTooltipDisplayUntil = new DateTime[Main.maxPlayers];
+        private static readonly HashSet<long> _playerPlacedTiles = new();
+        private static readonly object _placedTilesLock = new();
+        private const int MaxTrackedPlacedTiles = 200000;
 
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
@@ -411,8 +413,6 @@ namespace TShockEconomyExp.Handlers
             var mCfg = PluginMain.Config.Mining;
             if (!mCfg.Enabled || args.Handled) return;
 
-            if (args.Action != 0) return;
-
             TSPlayer player = args.Player;
             if (player == null || !player.IsLoggedIn) return;
 
@@ -420,6 +420,38 @@ namespace TShockEconomyExp.Handlers
             int tileY = args.Y;
 
             if (tileX < 0 || tileX >= Main.maxTilesX || tileY < 0 || tileY >= Main.maxTilesY) return;
+
+            long tileKey = ((long)tileX << 32) | (uint)tileY;
+
+            // 🌟 1. 플레이어가 블록/광물을 설치(Action 1: PlaceTile, Action 25: ReplaceTile 등)한 경우 좌표 기억
+            // Terraria TileEdit Action: 1 = PlaceTile, 25 = ReplaceTile
+            if (args.Action == 1 || args.Action == 25)
+            {
+                lock (_placedTilesLock)
+                {
+                    if (_playerPlacedTiles.Count >= MaxTrackedPlacedTiles)
+                    {
+                        _playerPlacedTiles.Clear(); // 메모리 보호용 상한 도달 시 정리
+                    }
+                    _playerPlacedTiles.Add(tileKey);
+                }
+                return;
+            }
+
+            // 🌟 2. 채광(Action 0: KillTile)인 경우 검사
+            if (args.Action != 0) return;
+
+            // 플레이어가 직접 설치했던 블록인 경우 보상 지급 방지 (어뷰징 차단)
+            bool wasPlacedByPlayer = false;
+            lock (_placedTilesLock)
+            {
+                if (_playerPlacedTiles.Remove(tileKey))
+                {
+                    wasPlacedByPlayer = true;
+                }
+            }
+
+            if (wasPlacedByPlayer) return;
 
             ITile tile = Main.tile[tileX, tileY];
             if (tile == null || !tile.active()) return;
