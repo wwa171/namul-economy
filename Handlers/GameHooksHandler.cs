@@ -16,6 +16,7 @@ namespace TShockEconomyExp.Handlers
         private static DateTime _lastHudTick = DateTime.UtcNow;
         private static readonly int[] _lastHeldItemNetId = new int[Main.maxPlayers];
         private static readonly byte[] _lastHeldItemPrefix = new byte[Main.maxPlayers];
+        private static readonly DateTime[] _itemTooltipDisplayUntil = new DateTime[Main.maxPlayers];
         private static readonly HashSet<long> _playerPlacedTiles = new();
         private static readonly object _placedTilesLock = new();
         private const int MaxTrackedPlacedTiles = 200000;
@@ -423,9 +424,8 @@ namespace TShockEconomyExp.Handlers
 
             long tileKey = ((long)tileX << 32) | (uint)tileY;
 
-            // 🌟 1. 플레이어가 블록/광물을 설치(Action 1: PlaceTile, Action 25: ReplaceTile 등)한 경우 좌표 기억
-            // Terraria TileEdit Action: 1 = PlaceTile, 25 = ReplaceTile
-            if (args.Action == 1 || args.Action == 25)
+            // 🌟 1. 플레이어가 블록/광물을 설치(Action PlaceTile=1, ReplaceTile=25 등)한 경우 좌표 기억
+            if (args.Action == GetDataHandlers.EditAction.PlaceTile || (int)args.Action == 25)
             {
                 lock (_placedTilesLock)
                 {
@@ -438,8 +438,8 @@ namespace TShockEconomyExp.Handlers
                 return;
             }
 
-            // 🌟 2. 채광(Action 0: KillTile)인 경우 검사
-            if (args.Action != 0) return;
+            // 🌟 2. 채광(Action KillTile=0)인 경우 검사
+            if (args.Action != GetDataHandlers.EditAction.KillTile) return;
 
             // 플레이어가 직접 설치했던 블록인 경우 보상 지급 방지 (어뷰징 차단)
             bool wasPlacedByPlayer = false;
