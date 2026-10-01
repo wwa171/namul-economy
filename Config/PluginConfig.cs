@@ -18,6 +18,47 @@ namespace TShockEconomyExp.Config
         public long KillBonusMoney { get; set; } = 0;
     }
 
+    /// <summary>
+    /// 스폰 지역 거리 비례 몬스터 강화 설정
+    /// </summary>
+    public class DistanceScalingConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 거리 계산 모드: "Euclidean"(직선거리), "HorizontalOnly"(X좌표 거리만), "Taxicab"(맨해튼 거리)
+        [JsonProperty("DistanceCalculationMode")]
+        public string DistanceCalculationMode { get; set; } = "Euclidean";
+
+        // 스폰 지점(기준점)으로부터 안전 지대 반경 (타일 단위, 기본 200타일)
+        [JsonProperty("SafeZoneTileRadius")]
+        public double SafeZoneTileRadius { get; set; } = 200.0;
+
+        // 강화 스텝 단위 (기본 100타일마다 강화)
+        [JsonProperty("TilesPerScalingStep")]
+        public double TilesPerScalingStep { get; set; } = 100.0;
+
+        // 1스텝당 증가하는 체력 배율 (기본 0.05 = 100타일마다 +5% 증가)
+        [JsonProperty("HealthIncreasePerStep")]
+        public double HealthIncreasePerStep { get; set; } = 0.05;
+
+        // 1스텝당 증가하는 공격력 배율 (기본 0.03 = 100타일마다 +3% 증가)
+        [JsonProperty("DamageIncreasePerStep")]
+        public double DamageIncreasePerStep { get; set; } = 0.03;
+
+        // 최대 허용 체력 배율 (기본 최대 10배)
+        [JsonProperty("MaxHealthMultiplier")]
+        public double MaxHealthMultiplier { get; set; } = 10.0;
+
+        // 최대 허용 공격력 배율 (기본 최대 5배)
+        [JsonProperty("MaxDamageMultiplier")]
+        public double MaxDamageMultiplier { get; set; } = 5.0;
+
+        // 거리로 강해진 만큼 경험치/골드 보상도 비례 증가 여부
+        [JsonProperty("ScaleRewardsWithDistance")]
+        public bool ScaleRewardsWithDistance { get; set; } = true;
+    }
+
     public class PluginConfig
     {
         [JsonProperty("CurrencyName")]
@@ -41,25 +82,24 @@ namespace TShockEconomyExp.Config
         [JsonProperty("NotifyRewardsInChat")]
         public bool NotifyRewardsInChat { get; set; } = false;
 
-        // 기본 데미지당 보상 비율 (몬스터별 개별 설정이 없을 때 적용)
         [JsonProperty("DefaultExpPerDamage")]
-        public double DefaultExpPerDamage { get; set; } = 0.02; // 데미지 100당 2 EXP
+        public double DefaultExpPerDamage { get; set; } = 0.02;
 
         [JsonProperty("DefaultMoneyPerDamage")]
-        public double DefaultMoneyPerDamage { get; set; } = 0.01; // 데미지 100당 1 골드
+        public double DefaultMoneyPerDamage { get; set; } = 0.01;
 
-        // 보스 몬스터 기본 배율
         [JsonProperty("BossMultiplier")]
         public double BossMultiplier { get; set; } = 3.0;
 
-        // 보상 제외 NPC 넷아이디 목록 (488: Target Dummy 등)
         [JsonProperty("BlacklistedNpcNetIds")]
         public List<int> BlacklistedNpcNetIds { get; set; } = new()
         {
-            488 // Target Dummy (타겟 더미)
+            488 // Target Dummy
         };
 
-        // 몬스터별 개별 비율 설정 (Key: NPC 이름 또는 NetID 문자열)
+        [JsonProperty("DistanceScaling")]
+        public DistanceScalingConfig DistanceScaling { get; set; } = new();
+
         [JsonProperty("MonsterOverrides")]
         public Dictionary<string, MonsterRewardSetting> MonsterOverrides { get; set; } = new()
         {
@@ -105,7 +145,6 @@ namespace TShockEconomyExp.Config
             }
             catch
             {
-                // 실패 시 기본 설정 반환
             }
 
             var config = new PluginConfig();

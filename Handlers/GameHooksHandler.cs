@@ -9,6 +9,7 @@ namespace TShockEconomyExp.Handlers
     {
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
+            ServerApi.Hooks.NpcSpawn.Register(plugin, OnNpcSpawn);
             ServerApi.Hooks.NpcStrike.Register(plugin, OnNpcStrike);
             ServerApi.Hooks.NpcKilled.Register(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Register(plugin, OnGreetPlayer);
@@ -16,6 +17,7 @@ namespace TShockEconomyExp.Handlers
 
         public static void UnregisterHooks(TerrariaPlugin plugin)
         {
+            ServerApi.Hooks.NpcSpawn.Deregister(plugin, OnNpcSpawn);
             ServerApi.Hooks.NpcStrike.Deregister(plugin, OnNpcStrike);
             ServerApi.Hooks.NpcKilled.Deregister(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Deregister(plugin, OnGreetPlayer);
@@ -41,18 +43,73 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 몬스터 피격 시 (데미지 보너스 서버 실타격 + 데미지 비례 EXP/골드 지급)
-        /// 테라리아의 클라이언트 주도 데미지 판정 한계를 극복하기 위해,
-        /// 스탯으로 증가한 추가 데미지(Bonus Damage)를 서버 측에서 StrikeNPC + NetMessage로 즉시 추가 타격하여 동기화합니다.
+        /// 🌟 스폰 위치 기준 거리 비례 몬스터 스펙(체력/공격력) 동적 스케일링
+        /// - 보스 몬스터, 친화적 NPC(타운 주민 등), 더미 등은 제외
         /// </summary>
+        private static void OnNpcSpawn(NpcSpawnEventArgs args)
+        {
+            var cfg = PluginMain.Config.DistanceScaling;
+            if (!cfg.Enabled) return;
+
+            int npcIndex = args.NpcId;
+            if (npcIndex < 0 || npcIndex >= Main.maxNPCs) return;
+
+            NPC npc = Main.npc[npcIndex];
+            if (npc == null || !npc.active || npc.friendly || npc.boss) return;
+            if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
+
+            // 월드 기본 스폰 지점 (타일 단위 좌표: Main.spawnTileX, Main.spawnTileY)
+            double spawnTileX = Main.spawnTileX;
+            double spawnTileY = Main.spawnTileY;
+
+            // 몬스터의 현재 타일 위치 (16픽셀 = 1타일)
+            double npcTileX = npc.position.X / 16.0;
+            double npcTileY = npc.position.Y / 16.0;
+
+            double dx = Math.Abs(npcTileX - spawnTileX);
+            double dy = Math.Abs(npcTileY - spawnTileY);
+
+            // 설정된 모드에 따른 거리(타일) 계산
+            double distanceTiles = cfg.DistanceCalculationMode.ToLowerInvariant() switch
+            {
+                "horizontalonly" => dx,
+                "taxicab" => dx + dy,
+                _ => Math.Sqrt(dx * dx + dy * dy) // 기본: 유클리드 직선거리
+            };
+
+            // 안전지대 내에 스폰된 몬스터는 기본 스펙 유지
+            if (distanceTiles <= cfg.SafeZoneTileRadius) return;
+
+            // 안전지대를 벗어난 유효 거리 및 강화 스텝 계산
+            double effectiveDistance = distanceTiles - cfg.SafeZoneTileRadius;
+            double steps = effectiveDistance / Math.Max(1.0, cfg.TilesPerScalingStep);
+
+            // 배율 계산 (최대 상한선 적용)
+            double healthMultiplier = Math.Min(cfg.MaxHealthMultiplier, 1.0 + (steps * cfg.HealthIncreasePerStep));
+            double damageMultiplier = Math.Min(cfg.MaxDamageMultiplier, 1.0 + (steps * cfg.DamageIncreasePerStep));
+
+            if (healthMultiplier > 1.0)
+            {
+                int newLifeMax = (int)(npc.lifeMax * healthMultiplier);
+                npc.lifeMax = newLifeMax;
+                npc.life = newLifeMax;
+            }
+
+            if (damageMultiplier > 1.0)
+            {
+                npc.damage = (int)(npc.damage * damageMultiplier);
+            }
+
+            // 모든 클라이언트에 갱신된 NPC 체력 및 스펙 패킷 동기화 전송 (패킷 23: NpcUpdate)
+            NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
+        }
+
         private static void OnNpcStrike(NpcStrikeEventArgs args)
         {
             if (!PluginMain.Config.EnableRewards) return;
 
             NPC npc = args.Npc;
             if (npc == null || !npc.active || npc.friendly || npc.life <= 0) return;
-
-            // 1. 타겟 더미(netID: 488) 및 블랙리스트 완전 차단
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
             int playerIndex = args.Player.whoAmI;
@@ -61,34 +118,26 @@ namespace TShockEconomyExp.Handlers
             TSPlayer player = TShock.Players[playerIndex];
             if (player == null || !player.IsLoggedIn) return;
 
-            // 2. 기본 가해진 데미지
             int baseDamage = args.Damage;
             if (baseDamage <= 0) return;
 
-            // 3. 스탯에 따른 추가 데미지 배율 계산
             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
             double bonusRatio = (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
 
             int bonusDamage = (int)(baseDamage * bonusRatio);
             int totalDealtDamage = baseDamage;
 
-            // 4. 🌟 스탯 추가 데미지 실타격 반영 로직
-            // 서버에서 직접 남은 체력을 확인하고 추가 데미지를 StrikeNPC로 입힌 뒤 모든 클라이언트에 패킷(28번)을 쏴서 동기화
             if (bonusDamage > 0 && npc.life > baseDamage)
             {
                 int effectiveBonus = Math.Min(bonusDamage, npc.life - baseDamage);
                 if (effectiveBonus > 0)
                 {
-                    // 서버에서 추가 타격 발생
                     npc.StrikeNPC(effectiveBonus, 0f, args.HitDirection, false, true, playerIndex, args.Player);
-                    // 패킷 28 (StrikeNPC) 동기화 전송 -> 클라이언트 화면에도 추가 데미지 숫자가 팝업되고 체력바가 정확히 깎임
                     NetMessage.SendData((int)PacketTypes.NpcStrike, -1, -1, null, npc.whoAmI, effectiveBonus, 0f, args.HitDirection, 0, 0, 0);
-
                     totalDealtDamage += effectiveBonus;
                 }
             }
 
-            // 5. 유효 데미지 기준 경험치 & 골드 보상 산정
             int effectiveTotalDamage = Math.Min(totalDealtDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
@@ -111,9 +160,6 @@ namespace TShockEconomyExp.Handlers
             }
         }
 
-        /// <summary>
-        /// 몬스터 처치 완료 시 토벌 보너스 및 퀘스트 카운트 처리
-        /// </summary>
         private static void OnNpcKilled(NpcKilledEventArgs args)
         {
             if (!PluginMain.Config.EnableRewards) return;
@@ -128,7 +174,6 @@ namespace TShockEconomyExp.Handlers
             TSPlayer player = TShock.Players[targetIndex];
             if (player == null || !player.IsLoggedIn) return;
 
-            // 1. 퀘스트 진행도 체크 (NetID & FullName 이중 매칭)
             if (PluginMain.RpgService.ProgressQuest(player.Account.Name, npc.netID, npc.FullName, out bool completed, out long qExp, out long qMoney))
             {
                 if (completed)
@@ -144,7 +189,6 @@ namespace TShockEconomyExp.Handlers
                 }
             }
 
-            // 2. 몬스터 킬 보너스
             var overrideSetting = FindMonsterSetting(npc);
             long bonusExp = overrideSetting?.KillBonusExp ?? 0;
             long bonusMoney = overrideSetting?.KillBonusMoney ?? 0;
