@@ -19,34 +19,31 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
-    /// 개별 플레이어 기준 거리 비례 몬스터 강화 설정
+    /// 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 강화 설정
+    /// 몬스터를 스폰시킨(주변에 있는) 플레이어가 서버 스폰포인트에서 멀리 떨어져 있을수록(바다, 맵 양 끝 등) 몬스터가 강화됨
     /// </summary>
     public class DistanceScalingConfig
     {
         [JsonProperty("Enabled")]
         public bool Enabled { get; set; } = true;
 
-        // "PlayerPersonalSpawn": 플레이어의 개인 스폰/침대 기준 (침대 없으면 기본스폰), "WorldSpawn": 월드 공용 스폰 기준
-        [JsonProperty("SpawnOriginType")]
-        public string SpawnOriginType { get; set; } = "PlayerPersonalSpawn";
-
-        // 거리 계산 모드: "Euclidean"(직선거리), "HorizontalOnly"(X축 좌우거리만), "Taxicab"(맨해튼거리)
+        // 거리 계산 모드: "HorizontalOnly"(바다/맵 좌우 끝 중심 X축 거리), "Euclidean"(직선거리), "Taxicab"(맨해튼거리)
         [JsonProperty("DistanceCalculationMode")]
-        public string DistanceCalculationMode { get; set; } = "Euclidean";
+        public string DistanceCalculationMode { get; set; } = "HorizontalOnly";
 
-        // 플레이어 기준 안전 지대 반경 (타일 단위, 기본 200타일)
+        // 서버 스폰포인트 중심 안전 지대 반경 (타일 단위, 기본 200타일 = 약 3200픽셀)
         [JsonProperty("SafeZoneTileRadius")]
         public double SafeZoneTileRadius { get; set; } = 200.0;
 
-        // 강화 스텝 단위 (기본 100타일마다 강화)
+        // 스폰지점에서 멀어질 때 강화 스텝 거리 (타일 단위, 기본 100타일마다 강화)
         [JsonProperty("TilesPerScalingStep")]
         public double TilesPerScalingStep { get; set; } = 100.0;
 
-        // 스텝당 증가하는 체력 배율 (기본 +5%)
+        // 스텝(100타일)당 증가하는 체력 배율 (기본 +5%)
         [JsonProperty("HealthIncreasePerStep")]
         public double HealthIncreasePerStep { get; set; } = 0.05;
 
-        // 스텝당 증가하는 공격력 배율 (기본 +3%)
+        // 스텝(100타일)당 증가하는 공격력 배율 (기본 +3%)
         [JsonProperty("DamageIncreasePerStep")]
         public double DamageIncreasePerStep { get; set; } = 0.03;
 
@@ -58,7 +55,7 @@ namespace TShockEconomyExp.Config
         [JsonProperty("MaxDamageMultiplier")]
         public double MaxDamageMultiplier { get; set; } = 5.0;
 
-        // 보상 연동 여부
+        // 거리로 강해진 만큼 경험치/골드 보상도 비례 증가 여부
         [JsonProperty("ScaleRewardsWithDistance")]
         public bool ScaleRewardsWithDistance { get; set; } = true;
     }

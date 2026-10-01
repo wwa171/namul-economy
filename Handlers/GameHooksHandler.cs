@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
@@ -242,8 +244,11 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 개별 플레이어 기준 거리 비례 몬스터 스펙 강화 (Distance Scaling)
-        /// - 몬스터가 스폰되었을 때 가장 가까운(또는 타겟인) 플레이어의 '개인 스폰/침대 위치'를 기준으로 거리를 개별 계산
+        /// 🌟 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 스폰 난이도 스케일링
+        /// - 몬스터가 소환될 때, 그 몬스터 주변에 있는 플레이어를 감지합니다.
+        /// - 플레이어가 '서버 스폰포인트(중앙)' 근처에 머물면 ➡️ 약한 몬스터 (기본 스펙)
+        /// - 플레이어가 '바다 쪽(맵 좌/우 끝)'으로 나아가 있으면 ➡️ 그 플레이어 주변 몬스터는 강한 몬스터로 스펙 강화!
+        /// - 플레이어마다 위치가 다르므로, 스폰에 있는 유저는 약한 몬스터를 만나고, 바다에 간 유저는 강한 몬스터를 만납니다.
         /// </summary>
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
@@ -260,8 +265,8 @@ namespace TShockEconomyExp.Handlers
             double npcTileX = npc.position.X / 16.0;
             double npcTileY = npc.position.Y / 16.0;
 
-            // 🌟 1. 몬스터 근처에 있는 가장 가까운 접속 플레이어 탐색 (개별 플레이어 기준)
-            TSPlayer? closestPlayer = null;
+            // 1. 몬스터 근처에 있는 플레이어(해당 스폰 지역에 위치한 유저) 감지
+            TSPlayer? nearbyPlayer = null;
             double minPlayerDistance = double.MaxValue;
 
             foreach (var p in TShock.Players)
@@ -272,31 +277,25 @@ namespace TShockEconomyExp.Handlers
                     if (pDist < minPlayerDistance)
                     {
                         minPlayerDistance = pDist;
-                        closestPlayer = p;
+                        nearbyPlayer = p;
                     }
                 }
             }
 
-            if (closestPlayer == null) return;
+            if (nearbyPlayer == null) return;
 
-            // 🌟 2. 해당 개별 플레이어의 개인 스폰 위치 결정 (침대 스폰이 있으면 개인 침대, 없으면 기본 스폰)
-            double originTileX = Main.spawnTileX;
-            double originTileY = Main.spawnTileY;
+            // 2. 서버 스폰포인트(월드 기본 스폰: Main.spawnTileX, Main.spawnTileY)
+            double serverSpawnTileX = Main.spawnTileX;
+            double serverSpawnTileY = Main.spawnTileY;
 
-            if (cfg.SpawnOriginType.Equals("PlayerPersonalSpawn", StringComparison.OrdinalIgnoreCase))
-            {
-                var tPlayer = closestPlayer.TPlayer;
-                if (tPlayer.SpawnX > 0 && tPlayer.SpawnY > 0)
-                {
-                    originTileX = tPlayer.SpawnX;
-                    originTileY = tPlayer.SpawnY;
-                }
-            }
+            // 3. 몬스터/플레이어가 서버 스폰포인트로부터 얼마나 멀리 떨어져 있는지 계산
+            double playerTileX = nearbyPlayer.X / 16.0;
+            double playerTileY = nearbyPlayer.Y / 16.0;
 
-            // 🌟 3. 개별 플레이어 기준 거리 계산
-            double dx = Math.Abs(npcTileX - originTileX);
-            double dy = Math.Abs(npcTileY - originTileY);
+            double dx = Math.Abs(playerTileX - serverSpawnTileX);
+            double dy = Math.Abs(playerTileY - serverSpawnTileY);
 
+            // 바다(맵 좌우 끝) 기준이 자연스러우므로 기본 HorizontalOnly 또는 설정된 모드에 따름
             double distanceTiles = cfg.DistanceCalculationMode.ToLowerInvariant() switch
             {
                 "horizontalonly" => dx,
@@ -304,8 +303,10 @@ namespace TShockEconomyExp.Handlers
                 _ => Math.Sqrt(dx * dx + dy * dy)
             };
 
+            // 서버 스폰포인트 중심 안전지대 반경 이내의 플레이어 주변에는 기본 몬스터 등장
             if (distanceTiles <= cfg.SafeZoneTileRadius) return;
 
+            // 서버 스폰포인트에서 바다 쪽으로 멀어진 플레이어 주변에는 강력한 몬스터 등장!
             double effectiveDistance = distanceTiles - cfg.SafeZoneTileRadius;
             double steps = effectiveDistance / Math.Max(1.0, cfg.TilesPerScalingStep);
 
@@ -327,9 +328,6 @@ namespace TShockEconomyExp.Handlers
             NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
         }
 
-        /// <summary>
-        /// 몬스터 피격 시 (데미지 비례 보상, 칭호 보너스, 파티 사냥 공유 분배)
-        /// </summary>
         private static void OnNpcStrike(NpcStrikeEventArgs args)
         {
             if (!PluginMain.Config.EnableRewards) return;

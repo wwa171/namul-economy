@@ -48,11 +48,10 @@ namespace NamulRpgConfigTool
                 LblMoneyPerDmg.Content = "Default Gold / Damage:";
                 LblBossMult.Content = "Boss Multiplier:";
 
-                GrpDistance.Header = "Player-Specific Distance Scaling (From Personal Spawn)";
+                GrpDistance.Header = "Server Spawnpoint Distance Scaling (Ocean / Outer Edges)";
                 ChkDistanceEnabled.Content = "Enable Distance-Based Monster Scaling";
-                LblSpawnOrigin.Content = "Spawn Origin:";
                 LblDistanceMode.Content = "Distance Mode:";
-                LblSafeZone.Content = "Personal Safe Zone (Tiles):";
+                LblSafeZone.Content = "Spawn Safe Zone (Tiles):";
                 LblStepTiles.Content = "Scaling Step (Tiles):";
                 LblHpStep.Content = "HP Increase per Step (+%):";
                 LblDmgStep.Content = "Damage Increase per Step (+%):";
@@ -101,11 +100,10 @@ namespace NamulRpgConfigTool
                 LblMoneyPerDmg.Content = "데미지당 기본 골드:";
                 LblBossMult.Content = "보스 몬스터 배율:";
 
-                GrpDistance.Header = "플레이어별 거리 비례 몬스터 강화 (Distance Scaling)";
+                GrpDistance.Header = "서버 스폰포인트 기준 몬스터 거리 비례 강화 (Distance Scaling)";
                 ChkDistanceEnabled.Content = "거리 비례 몬스터 강화 활성화";
-                LblSpawnOrigin.Content = "스폰 기준점:";
                 LblDistanceMode.Content = "거리 계산 방식:";
-                LblSafeZone.Content = "개인 안전 지대 (타일):";
+                LblSafeZone.Content = "스폰 중심 안전 지대 (타일):";
                 LblStepTiles.Content = "강화 스텝 거리 (타일):";
                 LblHpStep.Content = "스텝당 체력 증가 (+%):";
                 LblDmgStep.Content = "스텝당 공격력 증가 (+%):";
@@ -168,15 +166,12 @@ namespace NamulRpgConfigTool
                     if (dist != null)
                     {
                         ChkDistanceEnabled.IsChecked = (bool?)dist["Enabled"] ?? true;
-                        string origin = (string?)dist["SpawnOriginType"] ?? "PlayerPersonalSpawn";
-                        CmbSpawnOrigin.SelectedIndex = origin.Equals("WorldSpawn", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-
-                        string mode = (string?)dist["DistanceCalculationMode"] ?? "Euclidean";
+                        string mode = (string?)dist["DistanceCalculationMode"] ?? "HorizontalOnly";
                         CmbDistanceMode.SelectedIndex = mode.ToLower() switch
                         {
-                            "horizontalonly" => 1,
+                            "euclidean" => 1,
                             "taxicab" => 2,
-                            _ => 0
+                            _ => 0 // HorizontalOnly 기본
                         };
                         TxtSafeZone.Text = (string?)dist["SafeZoneTileRadius"] ?? "200";
                         TxtStepTiles.Text = (string?)dist["TilesPerScalingStep"] ?? "100";
@@ -280,17 +275,14 @@ namespace NamulRpgConfigTool
 
                 string mode = CmbDistanceMode.SelectedIndex switch
                 {
-                    1 => "HorizontalOnly",
+                    1 => "Euclidean",
                     2 => "Taxicab",
-                    _ => "Euclidean"
+                    _ => "HorizontalOnly"
                 };
-
-                string originType = CmbSpawnOrigin.SelectedIndex == 1 ? "WorldSpawn" : "PlayerPersonalSpawn";
 
                 var dist = new JObject
                 {
                     ["Enabled"] = ChkDistanceEnabled.IsChecked == true,
-                    ["SpawnOriginType"] = originType,
                     ["DistanceCalculationMode"] = mode,
                     ["SafeZoneTileRadius"] = double.TryParse(TxtSafeZone.Text, out var sz) ? sz : 200.0,
                     ["TilesPerScalingStep"] = double.TryParse(TxtStepTiles.Text, out var st) ? st : 100.0,
