@@ -522,6 +522,20 @@ namespace TShockEconomyExp.Handlers
 
             int bonusDamage = (int)(baseDamage * statBonusRatio);
 
+            // 🌟 실제 몬스터 체력 추가 감소 로직 (나구 확인: 실제 체력이 줄어들도록 안전하게 적용)
+            if (bonusDamage > 0 && npc.life > 0)
+            {
+                int effectiveBonus = Math.Min(bonusDamage, npc.life);
+                npc.life -= effectiveBonus;
+                if (npc.life <= 0)
+                {
+                    npc.life = 0;
+                    npc.checkDead();
+                }
+                // 패킷 23(NpcUpdate)으로 서버가 몬스터 체력 상태를 모든 클라이언트에 동기화
+                NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npc.whoAmI);
+            }
+
             // 🌟 추가데미지 플로팅 텍스트 (몬스터 위치에 띄우기, 텍스트는 짧게 + 직업별 컬러로 구분)
             // 전사: 빨간톤 (Red/Crimson), 궁수/레인저: 초록톤 (LimeGreen), 마법사/소서러: 푸른톤 (DeepSkyBlue/Cyan), 서머너: 흰색톤 (White/Silver)
             if (bonusDamage > 0)
@@ -541,8 +555,9 @@ namespace TShockEconomyExp.Handlers
             int effectiveTotalDamage = Math.Min(baseDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
-            long totalExpGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
-            long totalMoneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
+            // 최소 1 이상의 경험치/골드가 들어오도록 보정 (0.02비율로 40 이하 데미지일 때 0이 되는 현상 방지)
+            long totalExpGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * expRatio));
+            long totalMoneyGain = Math.Max(1, (long)Math.Ceiling(effectiveTotalDamage * moneyRatio));
 
             if (title != null)
             {
