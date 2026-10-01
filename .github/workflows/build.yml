@@ -62,11 +62,24 @@ jobs:
         name: "Namul RPG Core Latest Release"
         body: |
           🚀 **최신 TShock RPG Core (namul-economy) 자동 빌드 배포본**
-          - 커밋: ${{ github.sha }}
-          - 빌드 일자: ${{ github.event.head_commit.timestamp }}
-          - 포함 파일:
-            - `TShockEconomyExp.dll` (TShock 플러그인 바이너리)
-            - `NamulRpgConfigTool.exe` (경량 GUI 설정 편집기)
+          - **커밋**: `${{ github.sha }}`
+          - **커밋 메시지**: `${{ github.event.head_commit.message }}`
+          - **빌드 일자**: `${{ github.event.head_commit.timestamp }}`
+
+          ---
+          ### 📦 빌드 산출물 목록
+          - `TShockEconomyExp.dll` : 최신 TShock 서버 플러그인 바이너리 (TShock `ServerPlugins/` 적용)
+          - `NamulRpgConfigTool.exe` : 다국어 지원 경량 GUI 설정 편집기
+
+          ---
+          ### 🌟 최신 주요 기능 및 업데이트
+          - **👑 보스 스케일링 & 소환 통제 (`BossScaling`)**
+            - 서버 자연 발생 보스 스폰 차단 (`BlockNaturalBossSpawn`)
+            - 소환자 레벨 비례 보스 체력 증폭 (`체력 + (체력 * 레벨 * HealthIncreasePerLevel)`)
+            - 보스 소환 아이템 레벨별 사용 제한 (`BossItemLevelRequirements`)
+          - **🌾 채광 어뷰징 방지**: 플레이어 설치 블록 실시간 추적 및 보상 제외
+          - **⚡ 전투 패킷 최적화**: 다단히트 무기 렉 방지를 위한 CombatText 스로틀링
+          - **🗡️ 4대 직업 스탯**: 워리어/레인저/소서러/서머너 특화 스탯 시스템 및 상시 패시브 버프
         files: |
           build_output/TShockEconomyExp.dll
           build_output/NamulRpgConfigTool.exe
