@@ -53,12 +53,12 @@ namespace TShockEconomyExp.Commands
 
             TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", StatCommand, "스탯", "정보", "status", "stat")
             {
-                HelpText = "현재 나의 스탯(힘/민첩/지능/체력)과 남은 포인트를 확인합니다."
+                HelpText = "현재 나의 직업별 스탯(워리어/레인저/소서러/서머너)과 남은 포인트를 확인합니다."
             });
 
             TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", AllocateStatCommand, "스탯분배", "스탯투자", "addstat")
             {
-                HelpText = "스탯 포인트를 분배합니다. (/스탯분배 [힘|민첩|지능|체력] [수량])"
+                HelpText = "스탯 포인트를 분배합니다. (/스탯분배 [워리어|레인저|소서러|서머너] [수량])"
             });
 
             TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", ResetStatCommand, "스탯초기화", "resetstat")
