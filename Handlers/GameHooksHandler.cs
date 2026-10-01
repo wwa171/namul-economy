@@ -315,8 +315,9 @@ namespace TShockEconomyExp.Handlers
                                 bonusRatio = rpg.Warrior * statCfg.WarriorDamagePerPoint;
                             }
 
-                            string bonusStr = bonusRatio > 0 ? $" | 💥 {category} 보너스 +{(bonusRatio * 100):F1}%" : "";
-                            string itemTooltip = $"✨ [{heldItem.AffixName()}] (공격력: {heldItem.damage}{bonusStr})";
+                            string bonusStr = bonusRatio > 0 ? $"💥 {category} 보너스 +{(bonusRatio * 100):F1}%" : "";
+                            string secondLine = string.IsNullOrEmpty(bonusStr) ? $"공격력: {heldItem.damage}" : $"공격력: {heldItem.damage} | {bonusStr}";
+                            string itemTooltip = $"✨ [{heldItem.AffixName()}]\n{secondLine}";
 
                             // 4초간 툴팁 표시
                             _itemTooltipDisplayUntil[pIndex] = DateTime.UtcNow.AddSeconds(4);
@@ -348,7 +349,9 @@ namespace TShockEconomyExp.Handlers
                     var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
 
                     string titleStr = title != null ? $"[{title.Name}] " : "";
-                    string hud = $"🌱 {titleStr}{player.Name} | {rpg.Job} Lv.{lvl} ({curExp:N0}/{reqExp:N0}) | 💰 {money:N0} {PluginMain.Config.CurrencyName}";
+                    string line1 = $"🌱 {titleStr}{player.Name} | {rpg.Job} Lv.{lvl}";
+                    string line2 = $"⭐ EXP: {curExp:N0}/{reqExp:N0} | 💰 {money:N0} {PluginMain.Config.CurrencyName}";
+                    string hud = $"{line1}\n{line2}";
                     // 미니맵 아래 상태창(StatusText)에만 출력 (채팅창 도배 방지)
                     HudHelper.ShowStatusText(player, hud);
                 }
