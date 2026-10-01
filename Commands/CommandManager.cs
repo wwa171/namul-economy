@@ -500,9 +500,9 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            if (!PluginMain.RpgService.AllocateStat(args.Player.Account.Name, statName, amount))
+            if (!PluginMain.RpgService.AllocateStat(args.Player.Account.Name, statName, amount, out string errorMessage))
             {
-                args.Player.SendErrorMessage("보유 스탯 포인트가 부족하거나 올바르지 않은 스탯 이름입니다. (워리어, 레인저, 소서러, 서머너)");
+                args.Player.SendErrorMessage(string.IsNullOrEmpty(errorMessage) ? "보유 스탯 포인트가 부족하거나 올바르지 않은 스탯 이름입니다. (워리어, 레인저, 소서러, 서머너)" : errorMessage);
                 return;
             }
 
