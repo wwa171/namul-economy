@@ -520,9 +520,29 @@ namespace TShockEconomyExp.Handlers
                 statBonusRatio += title.BonusDamageRatio;
             }
 
-            int bonusDamage = (int)(baseDamage * statBonusRatio);
+            int rawBonusDamage = (int)(baseDamage * statBonusRatio);
+            int bonusDamage = 0;
 
-            // 🌟 실제 몬스터 체력 추가 감소 로직 (나구 확인: 실제 체력이 줄어들도록 안전하게 적용)
+            // 🌟 테라리아 표준 방어력 공식 적용 (방어력 감쇄: 클래식 50%, 전문가 75%, 마스터 100%)
+            // NPC defense는 Main.GameModeInfo에 따라 방어율이 다르거나 기본 0.5f로 감소
+            if (rawBonusDamage > 0)
+            {
+                float defenseFactor = 0.5f;
+                if (Main.masterMode)
+                {
+                    defenseFactor = 1.0f;
+                }
+                else if (Main.expertMode)
+                {
+                    defenseFactor = 0.75f;
+                }
+
+                int defenseReduction = (int)Math.Round(npc.defense * defenseFactor);
+                // 방어력을 차감하되 최소 1의 추가 데미지는 보장
+                bonusDamage = Math.Max(1, rawBonusDamage - defenseReduction);
+            }
+
+            // 🌟 실제 몬스터 체력 추가 감소 로직 (방어력 적용된 bonusDamage만큼 체력 차감)
             if (bonusDamage > 0 && npc.life > 0)
             {
                 int effectiveBonus = Math.Min(bonusDamage, npc.life);
