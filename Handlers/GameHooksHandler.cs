@@ -55,6 +55,8 @@ namespace TShockEconomyExp.Handlers
                 // number2 = posX (player.X)
                 // number3 = posY (player.Y)
                 // text = netText
+                // 테라리아 타일 1개 = 16픽셀, 캐릭터 높이 = 42픽셀
+                // 머리 바로 위로 살짝 낮춘 위치: player.Y - 10f
                 NetMessage.SendData(
                     119,
                     -1,
@@ -62,7 +64,7 @@ namespace TShockEconomyExp.Handlers
                     netText,
                     (int)color.PackedValue,
                     player.X,
-                    player.Y - 24f,
+                    player.Y - 10f,
                     0f,
                     0,
                     0,
@@ -498,12 +500,19 @@ namespace TShockEconomyExp.Handlers
             int bonusDamage = (int)(baseDamage * statBonusRatio);
             int totalDealtDamage = baseDamage;
 
+            // ⚠️ 무한 재귀 호출 방지: npc.StrikeNPC()는 다시 OnNpcStrike 훅을 트리거하므로, 
+            // 직접 StrikeNPC를 재호출하지 않고 npc.life를 직접 차감하거나 데미지만 집계합니다.
             if (bonusDamage > 0 && npc.life > baseDamage)
             {
                 int effectiveBonus = Math.Min(bonusDamage, npc.life - baseDamage);
                 if (effectiveBonus > 0)
                 {
-                    npc.StrikeNPC(effectiveBonus, 0f, args.HitDirection, false, true, playerIndex, args.Player);
+                    npc.life -= effectiveBonus;
+                    if (npc.life <= 0)
+                    {
+                        npc.life = 0;
+                        npc.checkDead();
+                    }
                     NetMessage.SendData((int)PacketTypes.NpcStrike, -1, -1, null, npc.whoAmI, effectiveBonus, 0f, args.HitDirection, 0, 0, 0);
                     totalDealtDamage += effectiveBonus;
                 }

@@ -18,8 +18,8 @@ namespace TShockEconomyExp.Handlers
             if (player == null || !player.Active) return;
             try
             {
-                // 줄바꿈 5줄 추가로 미니맵 아래로 위치 조정
-                string adjustedText = $"\n\n\n\n\n{text}";
+                // 줄바꿈 10줄 추가로 이전보다 더 아래로 위치 조정
+                string adjustedText = $"\n\n\n\n\n\n\n\n\n\n{text}";
                 var netText = NetworkText.FromLiteral(adjustedText);
                 NetMessage.SendData((int)PacketTypes.Status, player.Index, -1, netText, 0, 0f, 0f, 0f, 0, 0, 0);
             }
