@@ -5,10 +5,12 @@ namespace TShockEconomyExp.Database.Models
         public string AccountName { get; set; } = string.Empty;
         public string Job { get; set; } = "초보자";
         public int StatPoints { get; set; } = 0;
-        public int Strength { get; set; } = 0;
-        public int Dexterity { get; set; } = 0;
-        public int Intelligence { get; set; } = 0;
-        public int Vitality { get; set; } = 0;
+
+        // 🌟 4대 직업 데미지 특화 스탯
+        public int Warrior { get; set; } = 0;   // 워리어 (근접 물리 피해)
+        public int Ranger { get; set; } = 0;    // 레인저 (원거리 물리 피해)
+        public int Sorcerer { get; set; } = 0;  // 소서러 (마법 피해 & 최대 마나)
+        public int Summoner { get; set; } = 0;  // 서머너 (소환 피해)
 
         // 퀘스트 상태
         public string ActiveQuestTarget { get; set; } = string.Empty;

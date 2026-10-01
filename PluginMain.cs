@@ -14,9 +14,9 @@ namespace TShockEconomyExp
     public class PluginMain : TerrariaPlugin
     {
         public override string Name => "TShockEconomyExp";
-        public override Version Version => new Version(1, 7, 0);
+        public override Version Version => new Version(1, 8, 0);
         public override string Author => "나물이 & 나구 (Vibe Coding)";
-        public override string Description => "독립 SQLite 분리 기반 종합 RPG 코어 플러그인 (경제, 경험치, 직업/스탯, 채광/낚시, 칭호/업적, 파티 사냥, 상점, 강화, 거리 스케일링)";
+        public override string Description => "독립 SQLite 분리 기반 종합 RPG 코어 플러그인 (워리어/레인저/소서러/서머너 4대 직업 데미지 스탯, 경제, 경험치, 직업/스탯, 채광/낚시, 칭호/업적, 파티 사냥, 상점, 강화, 거리 스케일링)";
 
         public static PluginConfig Config { get; private set; } = new();
         public static ShopConfig ShopConfig { get; private set; } = new();
@@ -63,7 +63,7 @@ namespace TShockEconomyExp
             GameHooksHandler.RegisterHooks(this);
             CommandManager.RegisterCommands();
 
-            TShock.Log.ConsoleInfo($"[TShockEconomyExp] RPG v1.7.0 종합 시스템 로드 완료! (저장소: {configDir})");
+            TShock.Log.ConsoleInfo($"[TShockEconomyExp] RPG v1.8.0 4대 직업 데미지 스탯 시스템 로드 완료! (저장소: {configDir})");
         }
 
         private void OnLevelUpEvent(object? sender, LevelUpEventArgs e)

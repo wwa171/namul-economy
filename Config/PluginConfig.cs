@@ -19,6 +19,27 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
+    /// 직업 4대 특화 스탯 데미지 증가 배율 설정 (1포인트당 데미지 % 증가)
+    /// </summary>
+    public class StatDamageConfig
+    {
+        [JsonProperty("WarriorDamagePerPoint")]
+        public double WarriorDamagePerPoint { get; set; } = 0.02; // 워리어: 근접 물리 데미지 (+2.0%/pt)
+
+        [JsonProperty("RangerDamagePerPoint")]
+        public double RangerDamagePerPoint { get; set; } = 0.02;  // 레인저: 원거리 물리 데미지 (+2.0%/pt)
+
+        [JsonProperty("SorcererDamagePerPoint")]
+        public double SorcererDamagePerPoint { get; set; } = 0.025; // 소서러: 마법/마나소모 데미지 (+2.5%/pt)
+
+        [JsonProperty("SummonerDamagePerPoint")]
+        public double SummonerDamagePerPoint { get; set; } = 0.025; // 서머너: 소환수/채찍 데미지 (+2.5%/pt)
+
+        [JsonProperty("SorcererBonusManaPerPoint")]
+        public int SorcererBonusManaPerPoint { get; set; } = 5; // 소서러 1포인트당 최대 마나 보너스 (+5)
+    }
+
+    /// <summary>
     /// 서버 스폰포인트(Main.spawnTileX, Y) 기준 거리 비례 몬스터 강화 및 스폰율 설정
     /// </summary>
     public class DistanceScalingConfig
@@ -213,6 +234,10 @@ namespace TShockEconomyExp.Config
         {
             488 // Target Dummy
         };
+
+        // 🌟 4대 직업 데미지 스탯 설정
+        [JsonProperty("StatDamage")]
+        public StatDamageConfig StatDamage { get; set; } = new();
 
         [JsonProperty("DistanceScaling")]
         public DistanceScalingConfig DistanceScaling { get; set; } = new();

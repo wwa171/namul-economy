@@ -467,15 +467,16 @@ namespace TShockEconomyExp.Commands
 
             var rpg = PluginMain.RpgService.GetRpgData(args.Player.Account.Name);
             int level = PluginMain.ExpService.GetLevel(args.Player.Account.Name);
+            var statCfg = PluginMain.Config.StatDamage;
 
             args.Player.SendInfoMessage($"====== [{args.Player.Name} RPG 캐릭터 정보] ======");
             args.Player.SendInfoMessage($"🗡️ 직업: {rpg.Job} | ⭐ 레벨: Lv.{level}");
-            args.Player.SendInfoMessage($"💪 힘(STR): {rpg.Strength} (공격력 +{(rpg.Strength * 2.0):F1}%)");
-            args.Player.SendInfoMessage($"🏹 민첩(DEX): {rpg.Dexterity} (이동속도 / 신속)");
-            args.Player.SendInfoMessage($"🔮 지능(INT): {rpg.Intelligence} (최대 마나 +{rpg.Intelligence * 5})");
-            args.Player.SendInfoMessage($"❤️ 체력(VIT): {rpg.Vitality} (최대 체력 +{rpg.Vitality * 5})");
+            args.Player.SendInfoMessage($"⚔️ 워리어: {rpg.Warrior} (근접 피해 +{(rpg.Warrior * statCfg.WarriorDamagePerPoint * 100):F1}%)");
+            args.Player.SendInfoMessage($"🏹 레인저: {rpg.Ranger} (원거리 피해 +{(rpg.Ranger * statCfg.RangerDamagePerPoint * 100):F1}%)");
+            args.Player.SendInfoMessage($"🔮 소서러: {rpg.Sorcerer} (마법 피해 +{(rpg.Sorcerer * statCfg.SorcererDamagePerPoint * 100):F1}%, 마나 +{rpg.Sorcerer * statCfg.SorcererBonusManaPerPoint})");
+            args.Player.SendInfoMessage($"🐾 서머너: {rpg.Summoner} (소환 피해 +{(rpg.Summoner * statCfg.SummonerDamagePerPoint * 100):F1}%)");
             args.Player.SendSuccessMessage($"🔥 보유 스탯 포인트: {rpg.StatPoints} 포인트");
-            args.Player.SendInfoMessage("포인트 투자: /스탯분배 [힘|민첩|지능|체력] [수량] | 초기화: /스탯초기화");
+            args.Player.SendInfoMessage("포인트 투자: /스탯분배 [워리어|레인저|소서러|서머너] [수량] | 초기화: /스탯초기화");
         }
 
         private static void AllocateStatCommand(CommandArgs args)
@@ -488,7 +489,7 @@ namespace TShockEconomyExp.Commands
 
             if (args.Parameters.Count < 2)
             {
-                args.Player.SendErrorMessage("사용법: /스탯분배 [힘|민첩|지능|체력] [투자할포인트]");
+                args.Player.SendErrorMessage("사용법: /스탯분배 [워리어|레인저|소서러|서머너] [투자할포인트]");
                 return;
             }
 
@@ -501,7 +502,7 @@ namespace TShockEconomyExp.Commands
 
             if (!PluginMain.RpgService.AllocateStat(args.Player.Account.Name, statName, amount))
             {
-                args.Player.SendErrorMessage("보유 스탯 포인트가 부족하거나 올바르지 않은 스탯 이름입니다.");
+                args.Player.SendErrorMessage("보유 스탯 포인트가 부족하거나 올바르지 않은 스탯 이름입니다. (워리어, 레인저, 소서러, 서머너)");
                 return;
             }
 

@@ -115,7 +115,7 @@ namespace TShockEconomyExp.Database
             }
         }
 
-        public IEnumerable<UserEconomyData> GetTopEconomy(int limit = 10)
+        public List<UserEconomyData> GetTopBalances(int limit)
         {
             var list = new List<UserEconomyData>();
             lock (_economyLock)
@@ -141,7 +141,7 @@ namespace TShockEconomyExp.Database
 
         #endregion
 
-        #region Exp SQLite
+        #region Experience SQLite
 
         private SqliteConnection GetExpConnection()
         {
@@ -163,7 +163,7 @@ namespace TShockEconomyExp.Database
                         TotalExp INTEGER NOT NULL DEFAULT 0,
                         LastUpdated TEXT NOT NULL
                     );
-                    CREATE INDEX IF NOT EXISTS idx_exp_level ON UserExp(Level DESC, TotalExp DESC);
+                    CREATE INDEX IF NOT EXISTS idx_exp_total ON UserExp(TotalExp DESC);
                 ";
                 cmd.ExecuteNonQuery();
             }
@@ -210,28 +210,28 @@ namespace TShockEconomyExp.Database
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     INSERT INTO UserExp (AccountName, Level, TotalExp, LastUpdated)
-                    VALUES ($name, $level, $exp, $updated)
+                    VALUES ($name, $lvl, $total, $updated)
                     ON CONFLICT(AccountName) DO UPDATE SET
                         Level = excluded.Level,
                         TotalExp = excluded.TotalExp,
                         LastUpdated = excluded.LastUpdated;
                 ";
                 cmd.Parameters.AddWithValue("$name", data.AccountName);
-                cmd.Parameters.AddWithValue("$level", data.Level);
-                cmd.Parameters.AddWithValue("$exp", data.TotalExp);
+                cmd.Parameters.AddWithValue("$lvl", data.Level);
+                cmd.Parameters.AddWithValue("$total", data.TotalExp);
                 cmd.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("o"));
                 cmd.ExecuteNonQuery();
             }
         }
 
-        public IEnumerable<UserExpData> GetTopExp(int limit = 10)
+        public List<UserExpData> GetTopExp(int limit)
         {
             var list = new List<UserExpData>();
             lock (_expLock)
             {
                 using var conn = GetExpConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT AccountName, Level, TotalExp, LastUpdated FROM UserExp ORDER BY Level DESC, TotalExp DESC LIMIT $limit;";
+                cmd.CommandText = "SELECT AccountName, Level, TotalExp, LastUpdated FROM UserExp ORDER BY TotalExp DESC LIMIT $limit;";
                 cmd.Parameters.AddWithValue("$limit", limit);
 
                 using var reader = cmd.ExecuteReader();
@@ -271,10 +271,10 @@ namespace TShockEconomyExp.Database
                         AccountName TEXT PRIMARY KEY COLLATE NOCASE,
                         Job TEXT NOT NULL DEFAULT '초보자',
                         StatPoints INTEGER NOT NULL DEFAULT 0,
-                        Strength INTEGER NOT NULL DEFAULT 0,
-                        Dexterity INTEGER NOT NULL DEFAULT 0,
-                        Intelligence INTEGER NOT NULL DEFAULT 0,
-                        Vitality INTEGER NOT NULL DEFAULT 0,
+                        Warrior INTEGER NOT NULL DEFAULT 0,
+                        Ranger INTEGER NOT NULL DEFAULT 0,
+                        Sorcerer INTEGER NOT NULL DEFAULT 0,
+                        Summoner INTEGER NOT NULL DEFAULT 0,
                         ActiveQuestTarget TEXT NOT NULL DEFAULT '',
                         ActiveQuestTargetNetId INTEGER NOT NULL DEFAULT 0,
                         QuestRequiredCount INTEGER NOT NULL DEFAULT 0,
@@ -295,6 +295,10 @@ namespace TShockEconomyExp.Database
 
                 // 기존 DB 마이그레이션 호환성 (컬럼 누락 시 자동 추가)
                 string[] columns = {
+                    "Warrior INTEGER NOT NULL DEFAULT 0",
+                    "Ranger INTEGER NOT NULL DEFAULT 0",
+                    "Sorcerer INTEGER NOT NULL DEFAULT 0",
+                    "Summoner INTEGER NOT NULL DEFAULT 0",
                     "EquippedTitleId TEXT NOT NULL DEFAULT 'novice'",
                     "UnlockedTitlesJson TEXT NOT NULL DEFAULT '[\"novice\"]'",
                     "TotalMonsterKills INTEGER NOT NULL DEFAULT 0",
@@ -326,7 +330,7 @@ namespace TShockEconomyExp.Database
                 using var conn = GetRpgConnection();
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT AccountName, Job, StatPoints, Strength, Dexterity, Intelligence, Vitality,
+                    SELECT AccountName, Job, StatPoints, Warrior, Ranger, Sorcerer, Summoner,
                            ActiveQuestTarget, ActiveQuestTargetNetId, QuestRequiredCount, QuestCurrentCount,
                            QuestRewardExp, QuestRewardMoney, LastQuestDate,
                            EquippedTitleId, UnlockedTitlesJson, TotalMonsterKills, TotalBossKills, TotalMiningCount, TotalFishingCount,
@@ -343,10 +347,10 @@ namespace TShockEconomyExp.Database
                         AccountName = reader.GetString(0),
                         Job = reader.GetString(1),
                         StatPoints = reader.GetInt32(2),
-                        Strength = reader.GetInt32(3),
-                        Dexterity = reader.GetInt32(4),
-                        Intelligence = reader.GetInt32(5),
-                        Vitality = reader.GetInt32(6),
+                        Warrior = reader.GetInt32(3),
+                        Ranger = reader.GetInt32(4),
+                        Sorcerer = reader.GetInt32(5),
+                        Summoner = reader.GetInt32(6),
                         ActiveQuestTarget = reader.GetString(7),
                         ActiveQuestTargetNetId = reader.GetInt32(8),
                         QuestRequiredCount = reader.GetInt32(9),
@@ -369,10 +373,10 @@ namespace TShockEconomyExp.Database
                     AccountName = accountName,
                     Job = "초보자",
                     StatPoints = 0,
-                    Strength = 0,
-                    Dexterity = 0,
-                    Intelligence = 0,
-                    Vitality = 0,
+                    Warrior = 0,
+                    Ranger = 0,
+                    Sorcerer = 0,
+                    Summoner = 0,
                     EquippedTitleId = "novice",
                     UnlockedTitlesJson = "[\"novice\"]",
                     LastUpdated = DateTime.UtcNow
@@ -390,13 +394,13 @@ namespace TShockEconomyExp.Database
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     INSERT INTO UserRpg (
-                        AccountName, Job, StatPoints, Strength, Dexterity, Intelligence, Vitality,
+                        AccountName, Job, StatPoints, Warrior, Ranger, Sorcerer, Summoner,
                         ActiveQuestTarget, ActiveQuestTargetNetId, QuestRequiredCount, QuestCurrentCount,
                         QuestRewardExp, QuestRewardMoney, LastQuestDate,
                         EquippedTitleId, UnlockedTitlesJson, TotalMonsterKills, TotalBossKills, TotalMiningCount, TotalFishingCount,
                         LastUpdated
                     ) VALUES (
-                        $name, $job, $statPoints, $str, $dex, $int, $vit,
+                        $name, $job, $statPoints, $warrior, $ranger, $sorcerer, $summoner,
                         $target, $targetNetId, $reqCount, $curCount,
                         $rewardExp, $rewardMoney, $questDate,
                         $titleId, $unlockedTitles, $kills, $bossKills, $mining, $fishing,
@@ -404,10 +408,10 @@ namespace TShockEconomyExp.Database
                     ) ON CONFLICT(AccountName) DO UPDATE SET
                         Job = excluded.Job,
                         StatPoints = excluded.StatPoints,
-                        Strength = excluded.Strength,
-                        Dexterity = excluded.Dexterity,
-                        Intelligence = excluded.Intelligence,
-                        Vitality = excluded.Vitality,
+                        Warrior = excluded.Warrior,
+                        Ranger = excluded.Ranger,
+                        Sorcerer = excluded.Sorcerer,
+                        Summoner = excluded.Summoner,
                         ActiveQuestTarget = excluded.ActiveQuestTarget,
                         ActiveQuestTargetNetId = excluded.ActiveQuestTargetNetId,
                         QuestRequiredCount = excluded.QuestRequiredCount,
@@ -426,10 +430,10 @@ namespace TShockEconomyExp.Database
                 cmd.Parameters.AddWithValue("$name", data.AccountName);
                 cmd.Parameters.AddWithValue("$job", data.Job);
                 cmd.Parameters.AddWithValue("$statPoints", data.StatPoints);
-                cmd.Parameters.AddWithValue("$str", data.Strength);
-                cmd.Parameters.AddWithValue("$dex", data.Dexterity);
-                cmd.Parameters.AddWithValue("$int", data.Intelligence);
-                cmd.Parameters.AddWithValue("$vit", data.Vitality);
+                cmd.Parameters.AddWithValue("$warrior", data.Warrior);
+                cmd.Parameters.AddWithValue("$ranger", data.Ranger);
+                cmd.Parameters.AddWithValue("$sorcerer", data.Sorcerer);
+                cmd.Parameters.AddWithValue("$summoner", data.Summoner);
                 cmd.Parameters.AddWithValue("$target", data.ActiveQuestTarget);
                 cmd.Parameters.AddWithValue("$targetNetId", data.ActiveQuestTargetNetId);
                 cmd.Parameters.AddWithValue("$reqCount", data.QuestRequiredCount);

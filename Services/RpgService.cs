@@ -56,24 +56,33 @@ namespace TShockEconomyExp.Services
 
                 switch (statName.ToLower())
                 {
+                    case "warrior":
+                    case "워리어":
+                    case "전사":
                     case "str":
                     case "힘":
-                    case "근력":
-                        data.Strength += amount;
+                        data.Warrior += amount;
                         break;
+                    case "ranger":
+                    case "레인저":
+                    case "궁수":
                     case "dex":
                     case "민첩":
-                        data.Dexterity += amount;
+                        data.Ranger += amount;
                         break;
+                    case "sorcerer":
+                    case "소서러":
+                    case "마법사":
                     case "int":
                     case "지능":
                     case "마력":
-                        data.Intelligence += amount;
+                        data.Sorcerer += amount;
                         break;
-                    case "vit":
-                    case "체력":
-                    case "생명력":
-                        data.Vitality += amount;
+                    case "summoner":
+                    case "서머너":
+                    case "소환사":
+                    case "소환":
+                        data.Summoner += amount;
                         break;
                     default:
                         return false;
@@ -90,15 +99,14 @@ namespace TShockEconomyExp.Services
             lock (_lock)
             {
                 var data = _db.GetRpg(accountName);
-                int totalPoints = data.Strength + data.Dexterity + data.Intelligence + data.Vitality;
-                if (totalPoints == 0) return false;
+                int totalUsed = data.Warrior + data.Ranger + data.Sorcerer + data.Summoner;
+                if (totalUsed == 0) return false;
 
-                data.StatPoints += totalPoints;
-                data.Strength = 0;
-                data.Dexterity = 0;
-                data.Intelligence = 0;
-                data.Vitality = 0;
-
+                data.StatPoints += totalUsed;
+                data.Warrior = 0;
+                data.Ranger = 0;
+                data.Sorcerer = 0;
+                data.Summoner = 0;
                 _db.SaveRpg(data);
                 return true;
             }
@@ -109,56 +117,25 @@ namespace TShockEconomyExp.Services
             lock (_lock)
             {
                 var data = _db.GetRpg(accountName);
+                var candidates = GetQuestCandidates(playerLevel);
+                if (candidates.Count == 0) return;
 
-                // 레벨대별 목표 몬스터 테이블
-                (string name, int netId, int count, long exp, long money)[] pool = playerLevel switch
-                {
-                    < 10 => new[]
-                    {
-                        ("Green Slime", -3, 10, 150L, 200L),
-                        ("Blue Slime", -1, 10, 150L, 200L),
-                        ("Zombie", 3, 5, 200L, 300L),
-                        ("Demon Eye", 2, 5, 250L, 350L)
-                    },
-                    < 25 => new[]
-                    {
-                        ("Skeleton", 21, 15, 600L, 800L),
-                        ("Cave Bat", 49, 15, 500L, 700L),
-                        ("Eater of Souls", 6, 12, 800L, 1000L),
-                        ("Crimera", 173, 12, 800L, 1000L)
-                    },
-                    < 50 => new[]
-                    {
-                        ("Hornet", 42, 20, 2000L, 2500L),
-                        ("Man Eater", 43, 10, 2500L, 3000L),
-                        ("Hellbat", 59, 20, 3000L, 4000L),
-                        ("Lava Slime", 60, 20, 3000L, 4000L)
-                    },
-                    _ => new[]
-                    {
-                        ("Armored Skeleton", 77, 25, 6000L, 8000L),
-                        ("Derpling", 166, 20, 8000L, 10000L),
-                        ("Giant Tortoise", 153, 15, 10000L, 12000L),
-                        ("Chaos Elemental", 120, 10, 15000L, 20000L)
-                    }
-                };
+                var rnd = new Random();
+                var selected = candidates[rnd.Next(candidates.Count)];
 
-                var random = new Random();
-                var quest = pool[random.Next(pool.Length)];
-
-                data.ActiveQuestTarget = quest.name;
-                data.ActiveQuestTargetNetId = quest.netId;
-                data.QuestRequiredCount = quest.count;
+                data.ActiveQuestTarget = selected.Name;
+                data.ActiveQuestTargetNetId = selected.NetId;
+                data.QuestRequiredCount = selected.Count;
                 data.QuestCurrentCount = 0;
-                data.QuestRewardExp = quest.exp;
-                data.QuestRewardMoney = quest.money;
+                data.QuestRewardExp = selected.Exp;
+                data.QuestRewardMoney = selected.Money;
                 data.LastQuestDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
                 _db.SaveRpg(data);
             }
         }
 
-        public bool ProgressQuest(string accountName, int npcNetId, string npcName, out bool completed, out long rewardExp, out long rewardMoney)
+        public bool ProgressQuest(string accountName, int killedNetId, string killedName, out bool completed, out long rewardExp, out long rewardMoney)
         {
             completed = false;
             rewardExp = 0;
@@ -167,12 +144,10 @@ namespace TShockEconomyExp.Services
             lock (_lock)
             {
                 var data = _db.GetRpg(accountName);
-                if (data.QuestRequiredCount <= 0 || data.QuestCurrentCount >= data.QuestRequiredCount)
-                    return false;
+                if (data.QuestRequiredCount == 0) return false;
 
-                // NetID 또는 이름 매칭
-                bool match = (data.ActiveQuestTargetNetId != 0 && data.ActiveQuestTargetNetId == npcNetId) ||
-                             (!string.IsNullOrEmpty(data.ActiveQuestTarget) && data.ActiveQuestTarget.Equals(npcName, StringComparison.OrdinalIgnoreCase));
+                bool match = (data.ActiveQuestTargetNetId > 0 && data.ActiveQuestTargetNetId == killedNetId) ||
+                             (!string.IsNullOrEmpty(data.ActiveQuestTarget) && killedName.Contains(data.ActiveQuestTarget, StringComparison.OrdinalIgnoreCase));
 
                 if (!match) return false;
 
@@ -182,13 +157,48 @@ namespace TShockEconomyExp.Services
                     completed = true;
                     rewardExp = data.QuestRewardExp;
                     rewardMoney = data.QuestRewardMoney;
-                    data.QuestRequiredCount = 0; // 퀘스트 완료 처리
+
                     data.ActiveQuestTarget = "";
+                    data.ActiveQuestTargetNetId = 0;
+                    data.QuestRequiredCount = 0;
+                    data.QuestCurrentCount = 0;
                 }
 
                 _db.SaveRpg(data);
                 return true;
             }
         }
+
+        private List<QuestTemplate> GetQuestCandidates(int level)
+        {
+            var list = new List<QuestTemplate>();
+
+            // 초반 퀘스트 (1~10레벨)
+            list.Add(new QuestTemplate("Green Slime", -1, 5, 50, 100));
+            list.Add(new QuestTemplate("Blue Slime", -2, 5, 60, 120));
+            list.Add(new QuestTemplate("Zombie", 3, 5, 80, 150));
+            list.Add(new QuestTemplate("Demon Eye", 2, 3, 100, 200));
+
+            // 중반 퀘스트 (11레벨 이상)
+            if (level >= 10)
+            {
+                list.Add(new QuestTemplate("Eater of Souls", 6, 5, 200, 400));
+                list.Add(new QuestTemplate("Crimera", 173, 5, 200, 400));
+                list.Add(new QuestTemplate("Skeleton", 21, 5, 250, 500));
+                list.Add(new QuestTemplate("Hornet", 42, 5, 300, 600));
+            }
+
+            // 후반 퀘스트 (25레벨 이상)
+            if (level >= 25)
+            {
+                list.Add(new QuestTemplate("Hellbat", 59, 10, 500, 1000));
+                list.Add(new QuestTemplate("Lava Slime", 60, 10, 500, 1000));
+                list.Add(new QuestTemplate("Fire Imp", 24, 5, 600, 1200));
+            }
+
+            return list;
+        }
+
+        private record QuestTemplate(string Name, int NetId, int Count, long Exp, long Money);
     }
 }
