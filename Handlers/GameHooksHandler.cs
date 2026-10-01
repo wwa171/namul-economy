@@ -50,16 +50,21 @@ namespace TShockEconomyExp.Handlers
             try
             {
                 var netText = NetworkText.FromLiteral(text);
+                // Terraria Packet 119 (CombatTextString):
+                // number = (int)color.PackedValue
+                // number2 = posX (player.X)
+                // number3 = posY (player.Y)
+                // text = netText
                 NetMessage.SendData(
                     119,
                     -1,
                     -1,
                     netText,
-                    (int)player.X,
-                    player.Y - 16f,
-                    color.R,
-                    color.G,
-                    color.B,
+                    (int)color.PackedValue,
+                    player.X,
+                    player.Y - 24f,
+                    0f,
+                    0,
                     0,
                     0
                 );
@@ -71,7 +76,7 @@ namespace TShockEconomyExp.Handlers
 
         private static void OnServerChat(ServerChatEventArgs args)
         {
-            if (args.Handled || !PluginMain.TitleConfig.Enabled) return;
+            if (args.Handled) return;
 
             if (args.Text.StartsWith(TShock.Config.Settings.CommandSpecifier) ||
                 args.Text.StartsWith(TShock.Config.Settings.CommandSilentSpecifier))
@@ -79,6 +84,11 @@ namespace TShockEconomyExp.Handlers
 
             var player = TShock.Players[args.Who];
             if (player == null || !player.IsLoggedIn) return;
+
+            // 🌟 1. 플레이어가 일반 채팅을 쳤을 때 머리 위에 말풍선(CombatText) 팝업!
+            ShowCombatText(player, args.Text, Color.White);
+
+            if (!PluginMain.TitleConfig.Enabled) return;
 
             var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
             if (title == null) return;
@@ -246,7 +256,8 @@ namespace TShockEconomyExp.Handlers
 
                     string titleStr = title != null ? $"[{title.Name}] " : "";
                     string hud = $"🌱 {titleStr}{player.Name} | {rpg.Job} Lv.{lvl} ({curExp:N0}/{reqExp:N0}) | 💰 {money:N0} {PluginMain.Config.CurrencyName}";
-                    player.SendMessage(hud, new Color(166, 227, 161));
+                    // 미니맵 아래 상태창(StatusText)에만 출력 (채팅창 도배 방지)
+                    HudHelper.ShowStatusText(player, hud);
                 }
             }
         }
