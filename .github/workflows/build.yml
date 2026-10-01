@@ -22,16 +22,17 @@ jobs:
         dotnet-version: '9.0.x'
 
     - name: Download and Extract TShock Binary Dependencies
+      shell: powershell
       run: |
-        mkdir -p lib
+        New-Item -ItemType Directory -Path lib -Force
         curl.exe -L -o tshock.zip "https://github.com/Pryaxis/TShock/releases/download/v6.2.1/TShock-6.2.1-for-Terraria-1.4.5.8-win-x64-Release.zip"
-        tar -xf tshock.zip
-        cp ServerPlugins/TShockAPI.dll lib/
-        cp bin/TerrariaServer.dll lib/
-        cp bin/OTAPI.dll lib/
-        cp bin/ModFramework.dll lib/
-        rm tshock.zip
-      shell: bash
+        Expand-Archive -Path tshock.zip -DestinationPath extracted -Force
+        Copy-Item extracted/ServerPlugins/TShockAPI.dll lib/ -Force
+        Copy-Item extracted/bin/TerrariaServer.dll lib/ -Force
+        Copy-Item extracted/bin/OTAPI.dll lib/ -Force
+        Copy-Item extracted/bin/ModFramework.dll lib/ -Force
+        Remove-Item tshock.zip -Force
+        Remove-Item extracted -Recurse -Force
 
     - name: Build TShock Plugin DLL
       run: |
@@ -42,11 +43,11 @@ jobs:
         dotnet publish NamulRpgConfigTool/NamulRpgConfigTool.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
 
     - name: Archive Built Artifacts
+      shell: powershell
       run: |
-        mkdir -p build_output
-        cp bin/Release/net9.0/TShockEconomyExp.dll build_output/
-        cp NamulRpgConfigTool/bin/Release/net9.0-windows/win-x64/publish/NamulRpgConfigTool.exe build_output/
-      shell: bash
+        New-Item -ItemType Directory -Path build_output -Force
+        Copy-Item bin/Release/net9.0/TShockEconomyExp.dll build_output/ -Force
+        Copy-Item NamulRpgConfigTool/bin/Release/net9.0-windows/win-x64/publish/NamulRpgConfigTool.exe build_output/ -Force
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
