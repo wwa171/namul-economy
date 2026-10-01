@@ -26,7 +26,6 @@ namespace TShockEconomyExp.Handlers
             var player = TShock.Players[args.Who];
             if (player == null || !player.IsLoggedIn) return;
 
-            // 1. 신규 유저 초기 지원금 지급 확인
             var ecoData = PluginMain.Database.GetEconomy(player.Account.Name);
             if (ecoData.Balance == 0)
             {
@@ -34,7 +33,6 @@ namespace TShockEconomyExp.Handlers
                 player.SendSuccessMessage($"[알림] 신규 정착금 {PluginMain.Config.StartingBalance:N0} {PluginMain.Config.CurrencyName}이 지급되었습니다!");
             }
 
-            // 2. 접속 시 RPG 직업 및 스탯 안내
             var rpgData = PluginMain.RpgService.GetRpgData(player.Account.Name);
             if (rpgData.StatPoints > 0)
             {
@@ -43,16 +41,18 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 몬스터 피격 시 (직업/스탯 데미지 보정 적용 + 데미지 비례 EXP/골드 지급)
+        /// 몬스터 피격 시 (데미지 보너스 서버 실타격 + 데미지 비례 EXP/골드 지급)
+        /// 테라리아의 클라이언트 주도 데미지 판정 한계를 극복하기 위해,
+        /// 스탯으로 증가한 추가 데미지(Bonus Damage)를 서버 측에서 StrikeNPC + NetMessage로 즉시 추가 타격하여 동기화합니다.
         /// </summary>
         private static void OnNpcStrike(NpcStrikeEventArgs args)
         {
             if (!PluginMain.Config.EnableRewards) return;
 
             NPC npc = args.Npc;
-            if (npc == null || npc.friendly) return;
+            if (npc == null || !npc.active || npc.friendly || npc.life <= 0) return;
 
-            // 타겟 더미(netID: 488) 및 블랙리스트 완전 차단
+            // 1. 타겟 더미(netID: 488) 및 블랙리스트 완전 차단
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
             int playerIndex = args.Player.whoAmI;
@@ -61,38 +61,53 @@ namespace TShockEconomyExp.Handlers
             TSPlayer player = TShock.Players[playerIndex];
             if (player == null || !player.IsLoggedIn) return;
 
-            // RPG 스탯에 따른 공격력 증폭 적용
+            // 2. 기본 가해진 데미지
+            int baseDamage = args.Damage;
+            if (baseDamage <= 0) return;
+
+            // 3. 스탯에 따른 추가 데미지 배율 계산
             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
-            double statMultiplier = 1.0;
+            double bonusRatio = (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
 
-            // 직업 및 스탯별 보너스
-            // 힘(STR): 1포인트당 +1.5% 데미지
-            // 민첩(DEX): 1포인트당 +1.5% 데미지
-            // 지능(INT): 1포인트당 +1.5% 데미지
-            statMultiplier += (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
+            int bonusDamage = (int)(baseDamage * bonusRatio);
+            int totalDealtDamage = baseDamage;
 
-            int finalDamage = (int)(args.Damage * statMultiplier);
-            args.Damage = finalDamage;
+            // 4. 🌟 스탯 추가 데미지 실타격 반영 로직
+            // 서버에서 직접 남은 체력을 확인하고 추가 데미지를 StrikeNPC로 입힌 뒤 모든 클라이언트에 패킷(28번)을 쏴서 동기화
+            if (bonusDamage > 0 && npc.life > baseDamage)
+            {
+                int effectiveBonus = Math.Min(bonusDamage, npc.life - baseDamage);
+                if (effectiveBonus > 0)
+                {
+                    // 서버에서 추가 타격 발생
+                    npc.StrikeNPC(effectiveBonus, 0f, args.HitDirection, false, true, playerIndex, args.Player);
+                    // 패킷 28 (StrikeNPC) 동기화 전송 -> 클라이언트 화면에도 추가 데미지 숫자가 팝업되고 체력바가 정확히 깎임
+                    NetMessage.SendData((int)PacketTypes.NpcStrike, -1, -1, null, npc.whoAmI, effectiveBonus, 0f, args.HitDirection, 0, 0, 0);
 
-            int effectiveDamage = Math.Min(finalDamage, Math.Max(1, npc.life));
+                    totalDealtDamage += effectiveBonus;
+                }
+            }
+
+            // 5. 유효 데미지 기준 경험치 & 골드 보상 산정
+            int effectiveTotalDamage = Math.Min(totalDealtDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
-            long expGain = Math.Max(0, (long)(effectiveDamage * expRatio));
-            long moneyGain = Math.Max(0, (long)(effectiveDamage * moneyRatio));
+            long expGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
+            long moneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
 
             if (expGain > 0)
             {
-                PluginMain.ExpService.AddExp(player.Account.Name, expGain, $"데미지 보상: {npc.FullName} ({effectiveDamage} dmg)");
+                PluginMain.ExpService.AddExp(player.Account.Name, expGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
             }
 
             if (moneyGain > 0)
             {
-                PluginMain.EconomyService.AddBalance(player.Account.Name, moneyGain, $"데미지 보상: {npc.FullName} ({effectiveDamage} dmg)");
+                PluginMain.EconomyService.AddBalance(player.Account.Name, moneyGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
             }
 
             if (PluginMain.Config.NotifyRewardsInChat && (expGain > 0 || moneyGain > 0))
             {
-                player.SendMessage($"[전투] +{expGain:N0} EXP | +{moneyGain:N0} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Yellow);
+                player.SendMessage($"[전투] +{expGain:N0} EXP | +{moneyGain:N0} {PluginMain.Config.CurrencyName} (보너스: +{bonusDamage} dmg)", Microsoft.Xna.Framework.Color.Yellow);
             }
         }
 
@@ -113,7 +128,7 @@ namespace TShockEconomyExp.Handlers
             TSPlayer player = TShock.Players[targetIndex];
             if (player == null || !player.IsLoggedIn) return;
 
-            // 1. 퀘스트 진행도 체크
+            // 1. 퀘스트 진행도 체크 (NetID & FullName 이중 매칭)
             if (PluginMain.RpgService.ProgressQuest(player.Account.Name, npc.netID, npc.FullName, out bool completed, out long qExp, out long qMoney))
             {
                 if (completed)
