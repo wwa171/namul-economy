@@ -900,7 +900,7 @@ namespace TShockEconomyExp.Commands
                 }
 
                 // 구매자 잔액 차감 & 판매자 입금
-                PluginMain.EconomyService.SubtractBalance(args.Player.Account.Name, listing.Price, $"경매장 구매: {listing.ItemName}");
+                PluginMain.EconomyService.RemoveBalance(args.Player.Account.Name, listing.Price, $"경매장 구매: {listing.ItemName}");
                 PluginMain.EconomyService.AddBalance(listing.SellerAccount, listing.Price, $"경매장 판매 대금: {listing.ItemName}");
 
                 // 구매자 인벤토리에 아이템 지급
