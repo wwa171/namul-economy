@@ -21,6 +21,10 @@ namespace TShockEconomyExp.Handlers
         private static readonly object _placedTilesLock = new();
         private const int MaxTrackedPlacedTiles = 200000;
 
+        // 🌟 타격 패킷 스로틀링(과도한 브로드캐스트 방지)
+        private static readonly Dictionary<int, DateTime> _npcCombatTextCooldown = new();
+        private static readonly object _npcCombatTextLock = new();
+
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
             ServerApi.Hooks.NpcSpawn.Register(plugin, OnNpcSpawn);
@@ -508,16 +512,18 @@ namespace TShockEconomyExp.Handlers
             double npcTileY = npc.position.Y / 16.0;
 
             TSPlayer? nearbyPlayer = null;
-            double minPlayerDistance = double.MaxValue;
+            double minPlayerDistanceSq = double.MaxValue;
 
             foreach (var p in TShock.Players)
             {
                 if (p != null && p.Active && p.IsLoggedIn)
                 {
-                    double pDist = Math.Sqrt(Math.Pow((p.X / 16.0) - npcTileX, 2) + Math.Pow((p.Y / 16.0) - npcTileY, 2));
-                    if (pDist < minPlayerDistance)
+                    double diffX = (p.X / 16.0) - npcTileX;
+                    double diffY = (p.Y / 16.0) - npcTileY;
+                    double distSq = (diffX * diffX) + (diffY * diffY);
+                    if (distSq < minPlayerDistanceSq)
                     {
-                        minPlayerDistance = pDist;
+                        minPlayerDistanceSq = distSq;
                         nearbyPlayer = p;
                     }
                 }
@@ -665,20 +671,39 @@ namespace TShockEconomyExp.Handlers
                 NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npc.whoAmI);
             }
 
-            // 🌟 추가데미지 플로팅 텍스트 (몬스터 위치에 띄우기, 텍스트는 짧게 + 직업별 컬러로 구분)
+            // 🌟 추가데미지 플로팅 텍스트 (몬스터 위치에 띄우기, 스로틀링 100ms 적용으로 다단히트 렉 방지)
             // 전사: 빨간톤 (Red/Crimson), 궁수/레인저: 초록톤 (LimeGreen), 마법사/소서러: 푸른톤 (DeepSkyBlue/Cyan), 서머너: 흰색톤 (White/Silver)
             if (bonusDamage > 0)
             {
-                Color damageColor = damageCategory switch
+                bool canShowPopup = false;
+                lock (_npcCombatTextLock)
                 {
-                    "근접" => new Color(255, 75, 75),       // 전사: 빨간톤
-                    "원거리" => new Color(75, 255, 100),    // 레인저: 초록톤
-                    "마법" => new Color(80, 190, 255),      // 소서러: 푸른톤
-                    "소환" => new Color(245, 245, 255),     // 서머너: 흰색톤
-                    _ => new Color(255, 200, 80)
-                };
-                // 몬스터 위치(npc.position.X, npc.position.Y - 10f)에 추가 데미지 숫자 팝업!
-                ShowCombatTextAt(npc.position.X + (npc.width / 2f), npc.position.Y - 10f, $"+{bonusDamage}", damageColor);
+                    if (!_npcCombatTextCooldown.TryGetValue(npc.whoAmI, out var lastTime) || (DateTime.UtcNow - lastTime).TotalMilliseconds >= 120)
+                    {
+                        _npcCombatTextCooldown[npc.whoAmI] = DateTime.UtcNow;
+                        canShowPopup = true;
+
+                        // 딕셔너리 과대 팽창 방지
+                        if (_npcCombatTextCooldown.Count > 1000)
+                        {
+                            _npcCombatTextCooldown.Clear();
+                        }
+                    }
+                }
+
+                if (canShowPopup)
+                {
+                    Color damageColor = damageCategory switch
+                    {
+                        "근접" => new Color(255, 75, 75),       // 전사: 빨간톤
+                        "원거리" => new Color(75, 255, 100),    // 레인저: 초록톤
+                        "마법" => new Color(80, 190, 255),      // 소서러: 푸른톤
+                        "소환" => new Color(245, 245, 255),     // 서머너: 흰색톤
+                        _ => new Color(255, 200, 80)
+                    };
+                    // 몬스터 위치(npc.position.X, npc.position.Y - 10f)에 추가 데미지 숫자 팝업!
+                    ShowCombatTextAt(npc.position.X + (npc.width / 2f), npc.position.Y - 10f, $"+{bonusDamage}", damageColor);
+                }
             }
 
             int effectiveTotalDamage = Math.Min(baseDamage, Math.Max(1, npc.life));
