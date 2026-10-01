@@ -8,6 +8,7 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AssemblyName>TShockEconomyExp</AssemblyName>
     <RootNamespace>TShockEconomyExp</RootNamespace>
+    <DefaultItemExcludes>$(DefaultItemExcludes);NamulRpgConfigTool\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="ModFramework">
+      <HintPath>lib\ModFramework.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="OTAPI">
       <HintPath>lib\OTAPI.dll</HintPath>
       <Private>False</Private>

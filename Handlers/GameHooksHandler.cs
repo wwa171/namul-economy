@@ -7,12 +7,18 @@ namespace TShockEconomyExp.Handlers
 {
     public static class GameHooksHandler
     {
+        private static DateTime _lastPassiveTick = DateTime.UtcNow;
+
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
             ServerApi.Hooks.NpcSpawn.Register(plugin, OnNpcSpawn);
             ServerApi.Hooks.NpcStrike.Register(plugin, OnNpcStrike);
             ServerApi.Hooks.NpcKilled.Register(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Register(plugin, OnGreetPlayer);
+            ServerApi.Hooks.GameUpdate.Register(plugin, OnGameUpdate);
+
+            // TShock 채광(TileEdit) 패킷 핸들러 등록
+            GetDataHandlers.TileEdit.Register(OnTileEdit);
         }
 
         public static void UnregisterHooks(TerrariaPlugin plugin)
@@ -21,6 +27,9 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.NpcStrike.Deregister(plugin, OnNpcStrike);
             ServerApi.Hooks.NpcKilled.Deregister(plugin, OnNpcKilled);
             ServerApi.Hooks.NetGreetPlayer.Deregister(plugin, OnGreetPlayer);
+            ServerApi.Hooks.GameUpdate.Deregister(plugin, OnGameUpdate);
+
+            GetDataHandlers.TileEdit.UnRegister(OnTileEdit);
         }
 
         private static void OnGreetPlayer(GreetPlayerEventArgs args)
@@ -43,8 +52,88 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
+        /// 🌟 직업별 고유 지속 패시브 버프 주기적 부여 (전사=철피부/재생, 궁수=신속/양궁, 마법사=마력재생/강화, 소환사=소환/신속)
+        /// </summary>
+        private static void OnGameUpdate(EventArgs args)
+        {
+            var pCfg = PluginMain.Config.JobPassives;
+            if (!pCfg.Enabled) return;
+
+            if ((DateTime.UtcNow - _lastPassiveTick).TotalSeconds < Math.Max(1, pCfg.IntervalSeconds))
+                return;
+
+            _lastPassiveTick = DateTime.UtcNow;
+
+            foreach (var player in TShock.Players)
+            {
+                if (player == null || !player.Active || !player.IsLoggedIn) continue;
+
+                var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
+                List<int>? buffsToApply = rpg.Job switch
+                {
+                    "전사" => pCfg.WarriorBuffs,
+                    "궁수" => pCfg.RangerBuffs,
+                    "마법사" => pCfg.MageBuffs,
+                    "소환사" => pCfg.SummonerBuffs,
+                    _ => null
+                };
+
+                if (buffsToApply != null && buffsToApply.Count > 0)
+                {
+                    foreach (int buffId in buffsToApply)
+                    {
+                        // 10초간 버프 부여 (주기적으로 갱신되어 영구 지속)
+                        player.SetBuff(buffId, 600);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 🌟 채광(Mining) 생활 콘텐츠: 광물 타일을 캤을 때 경험치 및 골드 보상 지급
+        /// </summary>
+        private static void OnTileEdit(object? sender, GetDataHandlers.TileEditEventArgs args)
+        {
+            var mCfg = PluginMain.Config.Mining;
+            if (!mCfg.Enabled || args.Handled) return;
+
+            // Action 0 = 타일 파괴/채광 (KillTile)
+            if (args.Action != 0) return;
+
+            TSPlayer player = args.Player;
+            if (player == null || !player.IsLoggedIn) return;
+
+            int tileX = args.X;
+            int tileY = args.Y;
+
+            if (tileX < 0 || tileX >= Main.maxTilesX || tileY < 0 || tileY >= Main.maxTilesY) return;
+
+            ITile tile = Main.tile[tileX, tileY];
+            if (tile == null || !tile.active()) return;
+
+            ushort tileType = tile.type;
+            string key = tileType.ToString();
+
+            if (mCfg.OreRewards != null && mCfg.OreRewards.TryGetValue(key, out var reward))
+            {
+                if (reward.Exp > 0)
+                {
+                    PluginMain.ExpService.AddExp(player.Account.Name, reward.Exp, $"광물 채광: {reward.OreName}");
+                }
+                if (reward.Money > 0)
+                {
+                    PluginMain.EconomyService.AddBalance(player.Account.Name, reward.Money, $"광물 채광: {reward.OreName}");
+                }
+
+                if (mCfg.NotifyInChat)
+                {
+                    player.SendMessage($"[채광] {reward.OreName}! +{reward.Exp} EXP | +{reward.Money} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Orange);
+                }
+            }
+        }
+
+        /// <summary>
         /// 🌟 스폰 위치 기준 거리 비례 몬스터 스펙(체력/공격력) 동적 스케일링
-        /// - 보스 몬스터, 친화적 NPC(타운 주민 등), 더미 등은 제외
         /// </summary>
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
@@ -58,33 +147,27 @@ namespace TShockEconomyExp.Handlers
             if (npc == null || !npc.active || npc.friendly || npc.boss) return;
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
-            // 월드 기본 스폰 지점 (타일 단위 좌표: Main.spawnTileX, Main.spawnTileY)
             double spawnTileX = Main.spawnTileX;
             double spawnTileY = Main.spawnTileY;
 
-            // 몬스터의 현재 타일 위치 (16픽셀 = 1타일)
             double npcTileX = npc.position.X / 16.0;
             double npcTileY = npc.position.Y / 16.0;
 
             double dx = Math.Abs(npcTileX - spawnTileX);
             double dy = Math.Abs(npcTileY - spawnTileY);
 
-            // 설정된 모드에 따른 거리(타일) 계산
             double distanceTiles = cfg.DistanceCalculationMode.ToLowerInvariant() switch
             {
                 "horizontalonly" => dx,
                 "taxicab" => dx + dy,
-                _ => Math.Sqrt(dx * dx + dy * dy) // 기본: 유클리드 직선거리
+                _ => Math.Sqrt(dx * dx + dy * dy)
             };
 
-            // 안전지대 내에 스폰된 몬스터는 기본 스펙 유지
             if (distanceTiles <= cfg.SafeZoneTileRadius) return;
 
-            // 안전지대를 벗어난 유효 거리 및 강화 스텝 계산
             double effectiveDistance = distanceTiles - cfg.SafeZoneTileRadius;
             double steps = effectiveDistance / Math.Max(1.0, cfg.TilesPerScalingStep);
 
-            // 배율 계산 (최대 상한선 적용)
             double healthMultiplier = Math.Min(cfg.MaxHealthMultiplier, 1.0 + (steps * cfg.HealthIncreasePerStep));
             double damageMultiplier = Math.Min(cfg.MaxDamageMultiplier, 1.0 + (steps * cfg.DamageIncreasePerStep));
 
@@ -100,7 +183,6 @@ namespace TShockEconomyExp.Handlers
                 npc.damage = (int)(npc.damage * damageMultiplier);
             }
 
-            // 모든 클라이언트에 갱신된 NPC 체력 및 스펙 패킷 동기화 전송 (패킷 23: NpcUpdate)
             NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
         }
 

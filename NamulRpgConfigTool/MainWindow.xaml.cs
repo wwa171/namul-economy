@@ -59,6 +59,15 @@ namespace NamulRpgConfigTool
                 LblMaxDmgMult.Content = "Max Damage Multiplier (Cap):";
                 ChkScaleReward.Content = "Scale EXP & Money Rewards with Distance";
 
+                GrpMining.Header = "Mining Life Skills & Rewards Settings";
+                ChkMiningEnabled.Content = "Enable EXP & Gold Rewards from Mining";
+                ChkMiningChat.Content = "Show Chat Notification on Mining Rewards";
+                TxtMiningDesc.Text = "* Rewards are granted whenever ores like Copper, Iron, Gold, Platinum, Cobalt, Mythril, Chlorophyte, etc. are mined.";
+
+                GrpJobPassives.Header = "Job Passive Buff System";
+                ChkPassivesEnabled.Content = "Enable Permanent Job Passive Buffs";
+                TxtPassivesDesc.Text = "* Warrior (Ironskin+Regen), Ranger (Swiftness+Archery), Mage (Mana Regen+Magic Power), Summoner (Minion Slot+Swiftness).";
+
                 BtnOpen.Content = "📂 Load Config File";
                 BtnSaveAs.Content = "💾 Save As...";
                 BtnSave.Content = "✅ Save Config";
@@ -92,6 +101,15 @@ namespace NamulRpgConfigTool
                 LblMaxHpMult.Content = "최대 체력 상한선 (배수):";
                 LblMaxDmgMult.Content = "최대 공격력 상한선 (배수):";
                 ChkScaleReward.Content = "거리로 강해진 만큼 경험치/골드 보상도 비례 증가";
+
+                GrpMining.Header = "광물 채광(Mining) 생활 콘텐츠 설정";
+                ChkMiningEnabled.Content = "광물 채광 시 경험치/골드 보상 활성화";
+                ChkMiningChat.Content = "채광 보상 획득 시 개인 채팅 알림 표시";
+                TxtMiningDesc.Text = "* 구리/철/금/백금/코발트/미스릴/아다만타이트/클로로파이트 등 광물을 캘 때마다 보상이 지급됩니다.";
+
+                GrpJobPassives.Header = "직업별 패시브 버프 시스템";
+                ChkPassivesEnabled.Content = "직업별 패시브 상시 버프 활성화";
+                TxtPassivesDesc.Text = "* 전사(철피부+재생), 궁수(신속+양궁), 마법사(마력재생+마법강화), 소환사(하수인증가+신속) 효과가 상시 유지됩니다.";
 
                 BtnOpen.Content = "📂 설정 파일 열기 (Load JSON)";
                 BtnSaveAs.Content = "💾 다른 이름으로 저장 (Save As)";
@@ -144,6 +162,19 @@ namespace NamulRpgConfigTool
                         TxtMaxHpMult.Text = (string?)dist["MaxHealthMultiplier"] ?? "10.0";
                         TxtMaxDmgMult.Text = (string?)dist["MaxDamageMultiplier"] ?? "5.0";
                         ChkScaleReward.IsChecked = (bool?)dist["ScaleRewardsWithDistance"] ?? true;
+                    }
+
+                    var mining = obj["Mining"];
+                    if (mining != null)
+                    {
+                        ChkMiningEnabled.IsChecked = (bool?)mining["Enabled"] ?? true;
+                        ChkMiningChat.IsChecked = (bool?)mining["NotifyInChat"] ?? false;
+                    }
+
+                    var passives = obj["JobPassives"];
+                    if (passives != null)
+                    {
+                        ChkPassivesEnabled.IsChecked = (bool?)passives["Enabled"] ?? true;
                     }
 
                     _currentFilePath = dlg.FileName;
@@ -222,8 +253,21 @@ namespace NamulRpgConfigTool
                     ["MaxDamageMultiplier"] = double.TryParse(TxtMaxDmgMult.Text, out var mm) ? mm : 5.0,
                     ["ScaleRewardsWithDistance"] = ChkScaleReward.IsChecked == true
                 };
-
                 root["DistanceScaling"] = dist;
+
+                var mining = new JObject
+                {
+                    ["Enabled"] = ChkMiningEnabled.IsChecked == true,
+                    ["NotifyInChat"] = ChkMiningChat.IsChecked == true
+                };
+                root["Mining"] = mining;
+
+                var passives = new JObject
+                {
+                    ["Enabled"] = ChkPassivesEnabled.IsChecked == true,
+                    ["IntervalSeconds"] = 3
+                };
+                root["JobPassives"] = passives;
 
                 string json = JsonConvert.SerializeObject(root, Formatting.Indented);
                 File.WriteAllText(path, json);

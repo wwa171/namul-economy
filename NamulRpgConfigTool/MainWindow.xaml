@@ -1,7 +1,7 @@
 <Window x:Class="NamulRpgConfigTool.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="나물 RPG 설정 에디터 (Namul RPG Config Tool)" Height="680" Width="850"
+        Title="나물 RPG 설정 에디터 (Namul RPG Config Tool)" Height="760" Width="870"
         WindowStartupLocation="CenterScreen" Background="#1E1E2E">
     <Window.Resources>
         <Style TargetType="Label">
@@ -162,7 +162,24 @@
                     </StackPanel>
                 </GroupBox>
 
-                <!-- 3. 파일 경로 안내 -->
+                <!-- 3. 광물 채광(Mining) 생활 콘텐츠 설정 -->
+                <GroupBox x:Name="GrpMining" Header="광물 채광(Mining) 생활 콘텐츠 설정">
+                    <StackPanel>
+                        <CheckBox x:Name="ChkMiningEnabled" Content="광물 채광 시 경험치/골드 보상 활성화" Foreground="#CDD6F4" FontWeight="Bold" Margin="0,4,0,10" IsChecked="True"/>
+                        <CheckBox x:Name="ChkMiningChat" Content="채광 보상 획득 시 개인 채팅 알림 표시" Foreground="#CDD6F4" Margin="0,0,0,10" IsChecked="False"/>
+                        <TextBlock x:Name="TxtMiningDesc" Text="* 구리/철/금/백금/코발트/미스릴/아다만타이트/클로로파이트 등 광물을 캘 때마다 보상이 지급됩니다." Foreground="#BAC2DE" FontSize="11" Margin="2,0,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 4. 직업별 패시브 버프 설정 -->
+                <GroupBox x:Name="GrpJobPassives" Header="직업별 패시브 버프 시스템">
+                    <StackPanel>
+                        <CheckBox x:Name="ChkPassivesEnabled" Content="직업별 패시브 상시 버프 활성화" Foreground="#CDD6F4" FontWeight="Bold" Margin="0,4,0,10" IsChecked="True"/>
+                        <TextBlock x:Name="TxtPassivesDesc" Text="* 전사(철피부+재생), 궁수(신속+양궁), 마법사(마력재생+마법강화), 소환사(하수인증가+신속) 효과가 상시 유지됩니다." Foreground="#BAC2DE" FontSize="11" Margin="2,0,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 5. 파일 경로 안내 -->
                 <TextBlock x:Name="TxtFilePathInfo" Text="현재 불러온 경로: (기본값 세팅됨)" Foreground="#9399B2" FontSize="11" Margin="2,0,0,0"/>
             </StackPanel>
         </ScrollViewer>
