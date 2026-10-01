@@ -42,9 +42,9 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 플레이어 머리 위에 숫자/텍스트 팝업 (CombatTextString 패킷 119번)
+        /// 🌟 플레이어 또는 특정 좌표 위에 숫자/텍스트 팝업 (CombatTextString 패킷 119번)
         /// </summary>
-        public static void ShowCombatText(TSPlayer player, string text, Color color)
+        public static void ShowCombatText(TSPlayer player, string text, Color color, float offsetX = 0f, float offsetY = -10f)
         {
             if (player == null || !PluginMain.Config.EnableFloatingCombatText) return;
             try
@@ -52,19 +52,42 @@ namespace TShockEconomyExp.Handlers
                 var netText = NetworkText.FromLiteral(text);
                 // Terraria Packet 119 (CombatTextString):
                 // number = (int)color.PackedValue
-                // number2 = posX (player.X)
-                // number3 = posY (player.Y)
+                // number2 = posX
+                // number3 = posY
                 // text = netText
-                // 테라리아 타일 1개 = 16픽셀, 캐릭터 높이 = 42픽셀
-                // 머리 바로 위로 살짝 낮춘 위치: player.Y - 10f
                 NetMessage.SendData(
                     119,
                     -1,
                     -1,
                     netText,
                     (int)color.PackedValue,
-                    player.X,
-                    player.Y - 10f,
+                    player.X + offsetX,
+                    player.Y + offsetY,
+                    0f,
+                    0,
+                    0,
+                    0
+                );
+            }
+            catch
+            {
+            }
+        }
+
+        public static void ShowCombatTextAt(float x, float y, string text, Color color)
+        {
+            if (!PluginMain.Config.EnableFloatingCombatText) return;
+            try
+            {
+                var netText = NetworkText.FromLiteral(text);
+                NetMessage.SendData(
+                    119,
+                    -1,
+                    -1,
+                    netText,
+                    (int)color.PackedValue,
+                    x,
+                    y,
                     0f,
                     0,
                     0,
@@ -518,6 +541,22 @@ namespace TShockEconomyExp.Handlers
                 }
             }
 
+            // 🌟 1. 추가데미지 플로팅 텍스트 (텍스트를 짧게 줄이고 직업별 컬러로 구분)
+            // 전사: 빨간톤 (Red/Crimson), 궁수/레인저: 초록톤 (LimeGreen), 마법사/소서러: 푸른톤 (DeepSkyBlue/Cyan), 서머너: 흰색톤 (White/Silver)
+            if (bonusDamage > 0)
+            {
+                Color damageColor = damageCategory switch
+                {
+                    "근접" => new Color(255, 75, 75),       // 전사: 빨간톤
+                    "원거리" => new Color(75, 255, 100),    // 레인저: 초록톤
+                    "마법" => new Color(80, 190, 255),      // 소서러: 푸른톤
+                    "소환" => new Color(245, 245, 255),     // 서머너: 흰색톤
+                    _ => new Color(255, 200, 80)
+                };
+                // 짧은 텍스트 (예: "+15")
+                ShowCombatText(player, $"+{bonusDamage}", damageColor);
+            }
+
             int effectiveTotalDamage = Math.Min(totalDealtDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
@@ -561,7 +600,6 @@ namespace TShockEconomyExp.Handlers
                     {
                         PluginMain.EconomyService.AddBalance(member.Account.Name, sharedMoney, $"파티 사냥: {npc.FullName}");
                     }
-                    ShowCombatText(member, $"+{sharedExp} EXP", Color.LightGreen);
                 }
             }
             else
@@ -573,19 +611,6 @@ namespace TShockEconomyExp.Handlers
                 if (totalMoneyGain > 0)
                 {
                     PluginMain.EconomyService.AddBalance(player.Account.Name, totalMoneyGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
-                }
-
-                if (totalExpGain > 0 || totalMoneyGain > 0)
-                {
-                    Color combatColor = damageCategory switch
-                    {
-                        "마법" => new Color(180, 100, 255),
-                        "소환" => new Color(0, 230, 230),
-                        "원거리" => new Color(100, 255, 100),
-                        _ => new Color(255, 180, 50)
-                    };
-                    string bonusTag = bonusDamage > 0 ? $" ({damageCategory} +{bonusDamage})" : "";
-                    ShowCombatText(player, $"+{totalExpGain} EXP (+{totalMoneyGain}G){bonusTag}", combatColor);
                 }
             }
 
@@ -648,9 +673,42 @@ namespace TShockEconomyExp.Handlers
                 PluginMain.EconomyService.AddBalance(player.Account.Name, bonusMoney, $"처치 보너스: {npc.FullName}");
             }
 
+            // 🌟 2. 몬스터 처치 시 골드/경험치 플로팅 텍스트 팝업 (나구 요청: 잡았을 때 띄우기)
+            // 총 지급 경험치/골드 계산 (기본 처치 보너스 + 몬스터 스펙 기반)
+            long killExp = bonusExp;
+            long killMoney = bonusMoney;
+
+            if (killExp == 0)
+            {
+                killExp = Math.Max(5, (long)(npc.lifeMax * 0.15));
+            }
+            if (killMoney == 0)
+            {
+                killMoney = Math.Max(2, (long)(npc.lifeMax * 0.08));
+            }
+
+            var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+            if (title != null)
+            {
+                if (title.BonusExpRatio > 0) killExp = (long)(killExp * (1.0 + title.BonusExpRatio));
+                if (title.BonusMoneyRatio > 0) killMoney = (long)(killMoney * (1.0 + title.BonusMoneyRatio));
+            }
+
+            if (bonusExp == 0 && killExp > 0)
+            {
+                PluginMain.ExpService.AddExp(player.Account.Name, killExp, $"처치 보너스: {npc.FullName}");
+            }
+            if (bonusMoney == 0 && killMoney > 0)
+            {
+                PluginMain.EconomyService.AddBalance(player.Account.Name, killMoney, $"처치 보너스: {npc.FullName}");
+            }
+
+            // 플레이어 머리 위에 EXP와 골드 처치 보상 팝업! (골드: 황금색, EXP: 밝은 청록색)
+            ShowCombatText(player, $"+{killExp} EXP (+{killMoney}G)", Color.Gold);
+
             if (npc.boss)
             {
-                TShock.Utils.Broadcast($"[보스 토벌] {player.Name} 님이 {npc.FullName}을(를) 토벌했습니다! (보너스: +{bonusExp:N0} EXP, +{bonusMoney:N0} {PluginMain.Config.CurrencyName})", Color.Gold);
+                TShock.Utils.Broadcast($"[보스 토벌] {player.Name} 님이 {npc.FullName}을(를) 토벌했습니다! (보너스: +{killExp:N0} EXP, +{killMoney:N0} {PluginMain.Config.CurrencyName})", Color.Gold);
                 ShowCombatText(player, "BOSS KILLED!", Color.Gold);
             }
         }

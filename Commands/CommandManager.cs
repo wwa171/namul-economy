@@ -104,7 +104,54 @@ namespace TShockEconomyExp.Commands
             {
                 HelpText = "보유한 칭호를 장착합니다. (/칭호장착 [칭호이름])"
             });
+
+            // ================= 8. HUD 온/오프 명령어 (StatusTextManager 패턴) =================
+            TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", HudToggleCommand, "hud", "상태창", "st")
+            {
+                HelpText = "미니맵 아래 RPG 상태 HUD 표시를 켜거나 끕니다. (/hud [on|off])"
+            });
         }
+
+        #region HUD Toggle Handler
+
+        private static void HudToggleCommand(CommandArgs args)
+        {
+            if (args.Player == null || !args.Player.Active) return;
+
+            if (args.Parameters.Count == 0)
+            {
+                bool newState = HudHelper.ToggleHud(args.Player.Index);
+                if (newState)
+                {
+                    args.Player.SendSuccessMessage("[HUD] 미니맵 RPG 상태창 표시가 활성화되었습니다.");
+                }
+                else
+                {
+                    HudHelper.ClearStatusText(args.Player);
+                    args.Player.SendInfoMessage("[HUD] 미니맵 RPG 상태창 표시가 비활성화되었습니다.");
+                }
+                return;
+            }
+
+            string sub = args.Parameters[0].ToLowerInvariant();
+            if (sub is "on" or "show" or "켜기")
+            {
+                HudHelper.SetHudVisible(args.Player.Index, true);
+                args.Player.SendSuccessMessage("[HUD] 미니맵 RPG 상태창 표시가 활성화되었습니다.");
+            }
+            else if (sub is "off" or "hide" or "끄기")
+            {
+                HudHelper.SetHudVisible(args.Player.Index, false);
+                HudHelper.ClearStatusText(args.Player);
+                args.Player.SendInfoMessage("[HUD] 미니맵 RPG 상태창 표시가 비활성화되었습니다.");
+            }
+            else
+            {
+                args.Player.SendInfoMessage("사용법: /hud [on|off] 또는 /st");
+            }
+        }
+
+        #endregion
 
         #region Title Handlers
 
