@@ -52,7 +52,7 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
-    /// 생활 콘텐츠: 광물 채광(Mining) 경험치 & 골드 보상 설정
+    /// 생활 콘텐츠: 광물 채광(Mining) 설정
     /// </summary>
     public class MiningConfig
     {
@@ -62,7 +62,6 @@ namespace TShockEconomyExp.Config
         [JsonProperty("NotifyInChat")]
         public bool NotifyInChat { get; set; } = false;
 
-        // 타일 ID별 보상 설정 (예: 6=철, 7=구리, 8=금, 9=은, 12=심장/구슬, 37=운석, 56=데모나이트 등)
         [JsonProperty("OreRewards")]
         public Dictionary<string, OreRewardSetting> OreRewards { get; set; } = new()
         {
@@ -96,6 +95,31 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
+    /// 생활 콘텐츠: 낚시(Fishing) 보상 설정
+    /// </summary>
+    public class FishingConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        [JsonProperty("NotifyInChat")]
+        public bool NotifyInChat { get; set; } = true;
+
+        [JsonProperty("DefaultExp")]
+        public long DefaultExp { get; set; } = 50;
+
+        [JsonProperty("DefaultMoney")]
+        public long DefaultMoney { get; set; } = 30;
+
+        // 희귀/상자 낚시 보너스 배율
+        [JsonProperty("CrateExpMultiplier")]
+        public double CrateExpMultiplier { get; set; } = 3.0;
+
+        [JsonProperty("CrateMoneyMultiplier")]
+        public double CrateMoneyMultiplier { get; set; } = 4.0;
+    }
+
+    /// <summary>
     /// RPG 직업별 고유 지속 패시브 버프 설정
     /// </summary>
     public class JobPassiveConfig
@@ -106,21 +130,55 @@ namespace TShockEconomyExp.Config
         [JsonProperty("IntervalSeconds")]
         public int IntervalSeconds { get; set; } = 3;
 
-        // 전사: 철피부(BuffID 2 - 방어력+8), 재생(BuffID 5)
         [JsonProperty("WarriorBuffs")]
         public List<int> WarriorBuffs { get; set; } = new() { 2, 5 };
 
-        // 궁수: 신속(BuffID 3 - 이동속도+25%), 양궁(BuffID 16 - 활 데미지)
         [JsonProperty("RangerBuffs")]
         public List<int> RangerBuffs { get; set; } = new() { 3, 16 };
 
-        // 마법사: 마력 재생(BuffID 6), 마법 강화(BuffID 7 - 마법뎀+20%)
         [JsonProperty("MageBuffs")]
         public List<int> MageBuffs { get; set; } = new() { 6, 7 };
 
-        // 소환사: 소환 강화(BuffID 115 - 하수인 수+1), 신속(BuffID 3)
         [JsonProperty("SummonerBuffs")]
         public List<int> SummonerBuffs { get; set; } = new() { 115, 3 };
+    }
+
+    /// <summary>
+    /// 파티/팀 레이드 사냥 경험치·골드 공유 설정
+    /// </summary>
+    public class PartyConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 같은 팀원 공유 가능 최대 반경 (타일 단위, 기본 100타일)
+        [JsonProperty("ShareTileRadius")]
+        public double ShareTileRadius { get; set; } = 100.0;
+
+        // 파티 사냥 보너스 경험치 (팀원이 1명 추가될 때마다 +15%씩 전체 경험치 증가)
+        [JsonProperty("BonusExpPerMemberRatio")]
+        public double BonusExpPerMemberRatio { get; set; } = 0.15;
+
+        // 골드도 팀원들과 균등 분배 여부
+        [JsonProperty("ShareMoney")]
+        public bool ShareMoney { get; set; } = true;
+    }
+
+    /// <summary>
+    /// 장비 재련/강화(Reforge/Enhance) 시스템 설정
+    /// </summary>
+    public class EnhanceConfig
+    {
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; } = true;
+
+        // 1회 재련 기본 비용 (골드)
+        [JsonProperty("BaseCost")]
+        public long BaseCost { get; set; } = 1000;
+
+        // 최상급 접두사(Godly, Legendary, Unreal, Mythical 등) 당첨 보너스 배율
+        [JsonProperty("GodlyChanceMultiplier")]
+        public double GodlyChanceMultiplier { get; set; } = 1.0;
     }
 
     public class PluginConfig
@@ -161,15 +219,21 @@ namespace TShockEconomyExp.Config
             488 // Target Dummy
         };
 
-        // 거리 비례 몬스터 스펙 강화 설정
         [JsonProperty("DistanceScaling")]
         public DistanceScalingConfig DistanceScaling { get; set; } = new();
 
-        // 광물 채광(Mining) 보상 설정
         [JsonProperty("Mining")]
         public MiningConfig Mining { get; set; } = new();
 
-        // 직업별 고유 지속 패시브 버프 설정
+        [JsonProperty("Fishing")]
+        public FishingConfig Fishing { get; set; } = new();
+
+        [JsonProperty("Party")]
+        public PartyConfig Party { get; set; } = new();
+
+        [JsonProperty("Enhance")]
+        public EnhanceConfig Enhance { get; set; } = new();
+
         [JsonProperty("JobPassives")]
         public JobPassiveConfig JobPassives { get; set; } = new();
 

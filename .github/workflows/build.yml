@@ -1,0 +1,42 @@
+name: Build and Release Plugin
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 9.0 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Build TShock Plugin DLL
+      run: |
+        dotnet build TShockEconomyExp.csproj -c Release
+
+    - name: Publish Lightweight GUI Config Tool
+      run: |
+        dotnet publish NamulRpgConfigTool/NamulRpgConfigTool.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+
+    - name: Archive Built Artifacts
+      run: |
+        mkdir -p build_output
+        cp bin/Release/net9.0/TShockEconomyExp.dll build_output/
+        cp NamulRpgConfigTool/bin/Release/net9.0-windows/win-x64/publish/NamulRpgConfigTool.exe build_output/
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Namul-RPG-Build-Output
+        path: build_output/

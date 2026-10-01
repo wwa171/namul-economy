@@ -36,7 +36,7 @@ namespace NamulRpgConfigTool
             if (en)
             {
                 TxtTitle.Text = "🌱 Namul RPG Unified Config Tool";
-                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor";
+                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor (Vibe Coding)";
                 TxtLangLabel.Text = "🌐 Language: ";
 
                 GrpGeneral.Header = "General Economy & EXP Settings";
@@ -59,14 +59,18 @@ namespace NamulRpgConfigTool
                 LblMaxDmgMult.Content = "Max Damage Multiplier (Cap):";
                 ChkScaleReward.Content = "Scale EXP & Money Rewards with Distance";
 
-                GrpMining.Header = "Mining Life Skills & Rewards Settings";
-                ChkMiningEnabled.Content = "Enable EXP & Gold Rewards from Mining";
-                ChkMiningChat.Content = "Show Chat Notification on Mining Rewards";
-                TxtMiningDesc.Text = "* Rewards are granted whenever ores like Copper, Iron, Gold, Platinum, Cobalt, Mythril, Chlorophyte, etc. are mined.";
+                GrpParty.Header = "Party/Team Hunting EXP & Gold Sharing Settings";
+                ChkPartyEnabled.Content = "Enable Party Hunting Share (Admin On/Off)";
+                LblPartyRadius.Content = "Share Radius (Tiles):";
+                LblPartyBonus.Content = "Bonus EXP / Member (+%):";
+                ChkPartyMoney.Content = "Distribute Gold Evenly Among Members";
 
-                GrpJobPassives.Header = "Job Passive Buff System";
+                GrpLifeSkills.Header = "Life Skills (Mining/Fishing) & Item Enhancement";
+                ChkMiningEnabled.Content = "Enable Mining Rewards";
+                ChkFishingEnabled.Content = "Enable Fishing Rewards";
+                ChkEnhanceEnabled.Content = "Enable Equipment Reforge (/enhance)";
+                LblEnhanceCost.Content = "Base Reforge Cost (Gold):";
                 ChkPassivesEnabled.Content = "Enable Permanent Job Passive Buffs";
-                TxtPassivesDesc.Text = "* Warrior (Ironskin+Regen), Ranger (Swiftness+Archery), Mage (Mana Regen+Magic Power), Summoner (Minion Slot+Swiftness).";
 
                 BtnOpen.Content = "📂 Load Config File";
                 BtnSaveAs.Content = "💾 Save As...";
@@ -79,7 +83,7 @@ namespace NamulRpgConfigTool
             else
             {
                 TxtTitle.Text = "🌱 나물 RPG 통합 설정 툴";
-                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor";
+                TxtSubtitle.Text = "TShock Economy & Distance Scaling GUI Editor (Vibe Coding)";
                 TxtLangLabel.Text = "🌐 언어 / Language: ";
 
                 GrpGeneral.Header = "기본 경제 및 경험치 설정";
@@ -102,14 +106,18 @@ namespace NamulRpgConfigTool
                 LblMaxDmgMult.Content = "최대 공격력 상한선 (배수):";
                 ChkScaleReward.Content = "거리로 강해진 만큼 경험치/골드 보상도 비례 증가";
 
-                GrpMining.Header = "광물 채광(Mining) 생활 콘텐츠 설정";
-                ChkMiningEnabled.Content = "광물 채광 시 경험치/골드 보상 활성화";
-                ChkMiningChat.Content = "채광 보상 획득 시 개인 채팅 알림 표시";
-                TxtMiningDesc.Text = "* 구리/철/금/백금/코발트/미스릴/아다만타이트/클로로파이트 등 광물을 캘 때마다 보상이 지급됩니다.";
+                GrpParty.Header = "파티/팀 사냥 경험치·골드 공유 설정 (Party Hunting)";
+                ChkPartyEnabled.Content = "파티 사냥 경험치/골드 공유 활성화 (관리자 On/Off)";
+                LblPartyRadius.Content = "공유 가능 반경 (타일):";
+                LblPartyBonus.Content = "팀원당 보너스 경험치 (+%):";
+                ChkPartyMoney.Content = "골드도 팀원들과 균등 분배";
 
-                GrpJobPassives.Header = "직업별 패시브 버프 시스템";
-                ChkPassivesEnabled.Content = "직업별 패시브 상시 버프 활성화";
-                TxtPassivesDesc.Text = "* 전사(철피부+재생), 궁수(신속+양궁), 마법사(마력재생+마법강화), 소환사(하수인증가+신속) 효과가 상시 유지됩니다.";
+                GrpLifeSkills.Header = "생활 콘텐츠(채광/낚시) 및 장비 재련(강화)";
+                ChkMiningEnabled.Content = "광물 채광 보상 활성화";
+                ChkFishingEnabled.Content = "낚시 성공 보상 활성화";
+                ChkEnhanceEnabled.Content = "장비 재련(/강화) 활성화";
+                LblEnhanceCost.Content = "기본 강화 비용 (골드):";
+                ChkPassivesEnabled.Content = "직업별 고유 지속 패시브 버프 활성화";
 
                 BtnOpen.Content = "📂 설정 파일 열기 (Load JSON)";
                 BtnSaveAs.Content = "💾 다른 이름으로 저장 (Save As)";
@@ -164,11 +172,32 @@ namespace NamulRpgConfigTool
                         ChkScaleReward.IsChecked = (bool?)dist["ScaleRewardsWithDistance"] ?? true;
                     }
 
+                    var party = obj["Party"];
+                    if (party != null)
+                    {
+                        ChkPartyEnabled.IsChecked = (bool?)party["Enabled"] ?? true;
+                        TxtPartyRadius.Text = (string?)party["ShareTileRadius"] ?? "100";
+                        TxtPartyBonus.Text = (string?)party["BonusExpPerMemberRatio"] ?? "0.15";
+                        ChkPartyMoney.IsChecked = (bool?)party["ShareMoney"] ?? true;
+                    }
+
                     var mining = obj["Mining"];
                     if (mining != null)
                     {
                         ChkMiningEnabled.IsChecked = (bool?)mining["Enabled"] ?? true;
-                        ChkMiningChat.IsChecked = (bool?)mining["NotifyInChat"] ?? false;
+                    }
+
+                    var fishing = obj["Fishing"];
+                    if (fishing != null)
+                    {
+                        ChkFishingEnabled.IsChecked = (bool?)fishing["Enabled"] ?? true;
+                    }
+
+                    var enhance = obj["Enhance"];
+                    if (enhance != null)
+                    {
+                        ChkEnhanceEnabled.IsChecked = (bool?)enhance["Enabled"] ?? true;
+                        TxtEnhanceCost.Text = (string?)enhance["BaseCost"] ?? "1000";
                     }
 
                     var passives = obj["JobPassives"];
@@ -255,12 +284,40 @@ namespace NamulRpgConfigTool
                 };
                 root["DistanceScaling"] = dist;
 
+                var party = new JObject
+                {
+                    ["Enabled"] = ChkPartyEnabled.IsChecked == true,
+                    ["ShareTileRadius"] = double.TryParse(TxtPartyRadius.Text, out var pr) ? pr : 100.0,
+                    ["BonusExpPerMemberRatio"] = double.TryParse(TxtPartyBonus.Text, out var pb) ? pb : 0.15,
+                    ["ShareMoney"] = ChkPartyMoney.IsChecked == true
+                };
+                root["Party"] = party;
+
                 var mining = new JObject
                 {
                     ["Enabled"] = ChkMiningEnabled.IsChecked == true,
-                    ["NotifyInChat"] = ChkMiningChat.IsChecked == true
+                    ["NotifyInChat"] = false
                 };
                 root["Mining"] = mining;
+
+                var fishing = new JObject
+                {
+                    ["Enabled"] = ChkFishingEnabled.IsChecked == true,
+                    ["NotifyInChat"] = true,
+                    ["DefaultExp"] = 50,
+                    ["DefaultMoney"] = 30,
+                    ["CrateExpMultiplier"] = 3.0,
+                    ["CrateMoneyMultiplier"] = 4.0
+                };
+                root["Fishing"] = fishing;
+
+                var enhance = new JObject
+                {
+                    ["Enabled"] = ChkEnhanceEnabled.IsChecked == true,
+                    ["BaseCost"] = long.TryParse(TxtEnhanceCost.Text, out var ec) ? ec : 1000,
+                    ["GodlyChanceMultiplier"] = 1.0
+                };
+                root["Enhance"] = enhance;
 
                 var passives = new JObject
                 {

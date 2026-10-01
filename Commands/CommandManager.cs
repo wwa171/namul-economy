@@ -86,7 +86,68 @@ namespace TShockEconomyExp.Commands
             {
                 HelpText = "손에 들고 있는 아이템이나 지정한 아이템을 상점에 판매합니다. (/판매 [아이템이름] [수량])"
             });
+
+            // ================= 6. 장비 재련/강화(Enhance) 명령어 =================
+            TShockAPI.Commands.ChatCommands.Add(new Command("rpg.user", EnhanceCommand, "강화", "재련", "reforge", "enhance")
+            {
+                HelpText = "손에 든 장비를 골드를 소모하여 강화/재련합니다. (/강화)"
+            });
         }
+
+        #region Enhance Handler
+
+        private static void EnhanceCommand(CommandArgs args)
+        {
+            if (args.Player == null || !args.Player.IsLoggedIn)
+            {
+                args.Player?.SendErrorMessage("로그인 후 이용할 수 있습니다.");
+                return;
+            }
+
+            var eCfg = PluginMain.Config.Enhance;
+            if (!eCfg.Enabled)
+            {
+                args.Player.SendErrorMessage("장비 강화 기능이 현재 비활성화되어 있습니다.");
+                return;
+            }
+
+            var tPlayer = args.Player.TPlayer;
+            int selectedSlot = tPlayer.selectedItem;
+            if (selectedSlot < 0 || selectedSlot >= 58)
+            {
+                args.Player.SendErrorMessage("강화할 장비를 손에 쥐어주세요.");
+                return;
+            }
+
+            Item item = tPlayer.inventory[selectedSlot];
+            if (item == null || item.IsAir || (item.damage <= 0 && item.defense <= 0 && item.accessory == false))
+            {
+                args.Player.SendErrorMessage("강화(재련)할 수 있는 무기, 방어구, 또는 장신구를 손에 쥐어주세요!");
+                return;
+            }
+
+            long cost = Math.Max(100, eCfg.BaseCost + (item.rare * 200));
+            if (!PluginMain.EconomyService.RemoveBalance(args.Player.Account.Name, cost, $"장비 강화: {item.Name}"))
+            {
+                args.Player.SendErrorMessage($"골드가 부족합니다! (필요 골드: {cost:N0} {PluginMain.Config.CurrencyName})");
+                return;
+            }
+
+            // 테라리아 바닐라 재련 프리픽스 부여
+            // Prefix(-2) = 해당 아이템 타입에 맞는 랜덤 접두사 자동 선택 및 갱신
+            bool rolled = item.Prefix(-2);
+            if (!rolled)
+            {
+                item.Prefix(-1);
+            }
+
+            // 인벤토리 동기화 패킷 전송 (패킷 5번: PlayerSlot)
+            NetMessage.SendData((int)PacketTypes.PlayerSlot, -1, -1, null, args.Player.Index, selectedSlot, item.prefix);
+
+            args.Player.SendSuccessMessage($"✨ [강화 성공] {cost:N0} {PluginMain.Config.CurrencyName} 소모 -> [{item.AffixName()}] (으)로 재련되었습니다!");
+        }
+
+        #endregion
 
         #region Economy Handlers
 
@@ -437,7 +498,6 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            // 현재 퀘스트 정보 출력
             if (rpg.QuestRequiredCount > 0)
             {
                 args.Player.SendInfoMessage($"====== [진행 중인 일일 퀘스트] ======");
@@ -510,7 +570,6 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            // 인게임 인벤토리에 아이템 지급
             args.Player.GiveItem(item.NetId, count);
             args.Player.SendSuccessMessage($"[상점] '{item.Name}' x{count}개를 {totalPrice:N0} {PluginMain.Config.CurrencyName}에 구매했습니다!");
         }
@@ -544,7 +603,6 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            // 플레이어 인벤토리에서 아이템 수량 확인
             var tPlayer = args.Player.TPlayer;
             int totalFound = 0;
             for (int i = 0; i < 58; i++)
@@ -562,7 +620,6 @@ namespace TShockEconomyExp.Commands
                 return;
             }
 
-            // 인벤토리에서 차감
             int remainingToRemove = count;
             for (int i = 0; i < 58; i++)
             {

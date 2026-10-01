@@ -17,8 +17,9 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.NetGreetPlayer.Register(plugin, OnGreetPlayer);
             ServerApi.Hooks.GameUpdate.Register(plugin, OnGameUpdate);
 
-            // TShock 채광(TileEdit) 패킷 핸들러 등록
+            // TShock 채광(TileEdit) 및 낚시(ItemDrop) 이벤트 등록
             GetDataHandlers.TileEdit.Register(OnTileEdit);
+            GetDataHandlers.ItemDrop.Register(OnItemDrop);
         }
 
         public static void UnregisterHooks(TerrariaPlugin plugin)
@@ -30,6 +31,7 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.GameUpdate.Deregister(plugin, OnGameUpdate);
 
             GetDataHandlers.TileEdit.UnRegister(OnTileEdit);
+            GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
         }
 
         private static void OnGreetPlayer(GreetPlayerEventArgs args)
@@ -52,7 +54,7 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 직업별 고유 지속 패시브 버프 주기적 부여 (전사=철피부/재생, 궁수=신속/양궁, 마법사=마력재생/강화, 소환사=소환/신속)
+        /// 🌟 직업별 지속 패시브 버프 유지
         /// </summary>
         private static void OnGameUpdate(EventArgs args)
         {
@@ -82,7 +84,6 @@ namespace TShockEconomyExp.Handlers
                 {
                     foreach (int buffId in buffsToApply)
                     {
-                        // 10초간 버프 부여 (주기적으로 갱신되어 영구 지속)
                         player.SetBuff(buffId, 600);
                     }
                 }
@@ -90,15 +91,53 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 채광(Mining) 생활 콘텐츠: 광물 타일을 캤을 때 경험치 및 골드 보상 지급
+        /// 🌟 낚시(Fishing) 보상: 플레이어가 낚아올려 드롭된 아이템 감지
+        /// </summary>
+        private static void OnItemDrop(object? sender, GetDataHandlers.ItemDropEventArgs args)
+        {
+            var fCfg = PluginMain.Config.Fishing;
+            if (!fCfg.Enabled) return;
+
+            TSPlayer player = args.Player;
+            if (player == null || !player.IsLoggedIn) return;
+
+            int itemId = args.Type;
+            if (itemId <= 0) return;
+
+            bool isCrate = (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208) || (itemId >= 3979 && itemId <= 4002);
+            bool isFish = (itemId >= 2290 && itemId <= 2321) || (itemId >= 2425 && itemId <= 2430);
+
+            if (isCrate || isFish)
+            {
+                long exp = fCfg.DefaultExp;
+                long money = fCfg.DefaultMoney;
+
+                if (isCrate)
+                {
+                    exp = (long)(exp * fCfg.CrateExpMultiplier);
+                    money = (long)(money * fCfg.CrateMoneyMultiplier);
+                }
+
+                PluginMain.ExpService.AddExp(player.Account.Name, exp, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
+                PluginMain.EconomyService.AddBalance(player.Account.Name, money, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
+
+                if (fCfg.NotifyInChat)
+                {
+                    string targetType = isCrate ? "🎁 희귀 상자 낚시!" : "🐟 물고기 낚시 성공!";
+                    player.SendMessage($"[낚시] {targetType} +{exp:N0} EXP | +{money:N0} {PluginMain.Config.CurrencyName}", Microsoft.Xna.Framework.Color.Aqua);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 🌟 채광(Mining) 생활 콘텐츠
         /// </summary>
         private static void OnTileEdit(object? sender, GetDataHandlers.TileEditEventArgs args)
         {
             var mCfg = PluginMain.Config.Mining;
             if (!mCfg.Enabled || args.Handled) return;
 
-            // Action 0 = 타일 파괴/채광 (KillTile)
-            if (args.Action != 0) return;
+            if (args.Action != 0) return; // 0 = 타일 파괴
 
             TSPlayer player = args.Player;
             if (player == null || !player.IsLoggedIn) return;
@@ -133,7 +172,7 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 스폰 위치 기준 거리 비례 몬스터 스펙(체력/공격력) 동적 스케일링
+        /// 🌟 스폰 거리 비례 몬스터 스펙 강화
         /// </summary>
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
@@ -186,6 +225,9 @@ namespace TShockEconomyExp.Handlers
             NetMessage.SendData((int)PacketTypes.NpcUpdate, -1, -1, null, npcIndex);
         }
 
+        /// <summary>
+        /// 몬스터 피격 시 (데미지 비례 보상 및 파티 사냥 공유 분배)
+        /// </summary>
         private static void OnNpcStrike(NpcStrikeEventArgs args)
         {
             if (!PluginMain.Config.EnableRewards) return;
@@ -223,22 +265,58 @@ namespace TShockEconomyExp.Handlers
             int effectiveTotalDamage = Math.Min(totalDealtDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
-            long expGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
-            long moneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
+            long totalExpGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
+            long totalMoneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
 
-            if (expGain > 0)
+            // 🌟 파티/팀 사냥 경험치·골드 공유
+            var partyCfg = PluginMain.Config.Party;
+            List<TSPlayer> nearbyTeamMembers = new();
+
+            if (partyCfg.Enabled && player.Team > 0)
             {
-                PluginMain.ExpService.AddExp(player.Account.Name, expGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
+                foreach (var other in TShock.Players)
+                {
+                    if (other != null && other.Active && other.IsLoggedIn && other.Team == player.Team)
+                    {
+                        double distPixels = Math.Sqrt(Math.Pow(other.X - player.X, 2) + Math.Pow(other.Y - player.Y, 2));
+                        if (distPixels <= (partyCfg.ShareTileRadius * 16.0))
+                        {
+                            nearbyTeamMembers.Add(other);
+                        }
+                    }
+                }
             }
 
-            if (moneyGain > 0)
+            if (nearbyTeamMembers.Count > 1)
             {
-                PluginMain.EconomyService.AddBalance(player.Account.Name, moneyGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
+                double partyBonusMult = 1.0 + ((nearbyTeamMembers.Count - 1) * partyCfg.BonusExpPerMemberRatio);
+                long sharedExp = Math.Max(1, (long)((totalExpGain * partyBonusMult) / nearbyTeamMembers.Count));
+                long sharedMoney = partyCfg.ShareMoney ? Math.Max(1, totalMoneyGain / nearbyTeamMembers.Count) : totalMoneyGain;
+
+                foreach (var member in nearbyTeamMembers)
+                {
+                    PluginMain.ExpService.AddExp(member.Account.Name, sharedExp, $"파티 사냥: {npc.FullName}");
+                    if (partyCfg.ShareMoney || member == player)
+                    {
+                        PluginMain.EconomyService.AddBalance(member.Account.Name, sharedMoney, $"파티 사냥: {npc.FullName}");
+                    }
+                }
+            }
+            else
+            {
+                if (totalExpGain > 0)
+                {
+                    PluginMain.ExpService.AddExp(player.Account.Name, totalExpGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
+                }
+                if (totalMoneyGain > 0)
+                {
+                    PluginMain.EconomyService.AddBalance(player.Account.Name, totalMoneyGain, $"데미지 보상: {npc.FullName} ({effectiveTotalDamage} dmg)");
+                }
             }
 
-            if (PluginMain.Config.NotifyRewardsInChat && (expGain > 0 || moneyGain > 0))
+            if (PluginMain.Config.NotifyRewardsInChat && (totalExpGain > 0 || totalMoneyGain > 0))
             {
-                player.SendMessage($"[전투] +{expGain:N0} EXP | +{moneyGain:N0} {PluginMain.Config.CurrencyName} (보너스: +{bonusDamage} dmg)", Microsoft.Xna.Framework.Color.Yellow);
+                player.SendMessage($"[전투] +{totalExpGain:N0} EXP | +{totalMoneyGain:N0} {PluginMain.Config.CurrencyName} (보너스: +{bonusDamage} dmg)", Microsoft.Xna.Framework.Color.Yellow);
             }
         }
 
