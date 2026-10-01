@@ -43,6 +43,9 @@ namespace TShockEconomyExp.Database
         {
             var conn = new SqliteConnection($"Data Source={_economyDbPath}");
             conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            cmd.ExecuteNonQuery();
             return conn;
         }
 
@@ -147,6 +150,9 @@ namespace TShockEconomyExp.Database
         {
             var conn = new SqliteConnection($"Data Source={_expDbPath}");
             conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            cmd.ExecuteNonQuery();
             return conn;
         }
 
@@ -257,6 +263,9 @@ namespace TShockEconomyExp.Database
         {
             var conn = new SqliteConnection($"Data Source={_rpgDbPath}");
             conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            cmd.ExecuteNonQuery();
             return conn;
         }
 
