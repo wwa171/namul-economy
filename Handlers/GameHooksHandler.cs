@@ -521,27 +521,8 @@ namespace TShockEconomyExp.Handlers
             }
 
             int bonusDamage = (int)(baseDamage * statBonusRatio);
-            int totalDealtDamage = baseDamage;
 
-            // ⚠️ 무한 재귀 호출 방지: npc.StrikeNPC()는 다시 OnNpcStrike 훅을 트리거하므로, 
-            // 직접 StrikeNPC를 재호출하지 않고 npc.life를 직접 차감하거나 데미지만 집계합니다.
-            if (bonusDamage > 0 && npc.life > baseDamage)
-            {
-                int effectiveBonus = Math.Min(bonusDamage, npc.life - baseDamage);
-                if (effectiveBonus > 0)
-                {
-                    npc.life -= effectiveBonus;
-                    if (npc.life <= 0)
-                    {
-                        npc.life = 0;
-                        npc.checkDead();
-                    }
-                    NetMessage.SendData((int)PacketTypes.NpcStrike, -1, -1, null, npc.whoAmI, effectiveBonus, 0f, args.HitDirection, 0, 0, 0);
-                    totalDealtDamage += effectiveBonus;
-                }
-            }
-
-            // 🌟 1. 추가데미지 플로팅 텍스트 (텍스트를 짧게 줄이고 직업별 컬러로 구분)
+            // 🌟 추가데미지 플로팅 텍스트 (몬스터 위치에 띄우기, 텍스트는 짧게 + 직업별 컬러로 구분)
             // 전사: 빨간톤 (Red/Crimson), 궁수/레인저: 초록톤 (LimeGreen), 마법사/소서러: 푸른톤 (DeepSkyBlue/Cyan), 서머너: 흰색톤 (White/Silver)
             if (bonusDamage > 0)
             {
@@ -553,11 +534,11 @@ namespace TShockEconomyExp.Handlers
                     "소환" => new Color(245, 245, 255),     // 서머너: 흰색톤
                     _ => new Color(255, 200, 80)
                 };
-                // 짧은 텍스트 (예: "+15")
-                ShowCombatText(player, $"+{bonusDamage}", damageColor);
+                // 몬스터 위치(npc.position.X, npc.position.Y - 10f)에 추가 데미지 숫자 팝업!
+                ShowCombatTextAt(npc.position.X + (npc.width / 2f), npc.position.Y - 10f, $"+{bonusDamage}", damageColor);
             }
 
-            int effectiveTotalDamage = Math.Min(totalDealtDamage, Math.Max(1, npc.life));
+            int effectiveTotalDamage = Math.Min(baseDamage, Math.Max(1, npc.life));
             var (expRatio, moneyRatio) = GetRewardRatios(npc);
 
             long totalExpGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
