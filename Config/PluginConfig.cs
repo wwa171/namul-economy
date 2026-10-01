@@ -19,41 +19,50 @@ namespace TShockEconomyExp.Config
     }
 
     /// <summary>
-    /// 스폰 지역 거리 비례 몬스터 강화 설정
+    /// 개별 플레이어 기준 거리 비례 몬스터 강화 설정
     /// </summary>
     public class DistanceScalingConfig
     {
         [JsonProperty("Enabled")]
         public bool Enabled { get; set; } = true;
 
+        // "PlayerPersonalSpawn": 플레이어의 개인 스폰/침대 기준 (침대 없으면 기본스폰), "WorldSpawn": 월드 공용 스폰 기준
+        [JsonProperty("SpawnOriginType")]
+        public string SpawnOriginType { get; set; } = "PlayerPersonalSpawn";
+
+        // 거리 계산 모드: "Euclidean"(직선거리), "HorizontalOnly"(X축 좌우거리만), "Taxicab"(맨해튼거리)
         [JsonProperty("DistanceCalculationMode")]
         public string DistanceCalculationMode { get; set; } = "Euclidean";
 
+        // 플레이어 기준 안전 지대 반경 (타일 단위, 기본 200타일)
         [JsonProperty("SafeZoneTileRadius")]
         public double SafeZoneTileRadius { get; set; } = 200.0;
 
+        // 강화 스텝 단위 (기본 100타일마다 강화)
         [JsonProperty("TilesPerScalingStep")]
         public double TilesPerScalingStep { get; set; } = 100.0;
 
+        // 스텝당 증가하는 체력 배율 (기본 +5%)
         [JsonProperty("HealthIncreasePerStep")]
         public double HealthIncreasePerStep { get; set; } = 0.05;
 
+        // 스텝당 증가하는 공격력 배율 (기본 +3%)
         [JsonProperty("DamageIncreasePerStep")]
         public double DamageIncreasePerStep { get; set; } = 0.03;
 
+        // 최대 허용 체력 배율 (최대 10배)
         [JsonProperty("MaxHealthMultiplier")]
         public double MaxHealthMultiplier { get; set; } = 10.0;
 
+        // 최대 허용 공격력 배율 (최대 5배)
         [JsonProperty("MaxDamageMultiplier")]
         public double MaxDamageMultiplier { get; set; } = 5.0;
 
+        // 보상 연동 여부
         [JsonProperty("ScaleRewardsWithDistance")]
         public bool ScaleRewardsWithDistance { get; set; } = true;
     }
 
-    /// <summary>
-    /// 생활 콘텐츠: 광물 채광(Mining) 설정
-    /// </summary>
     public class MiningConfig
     {
         [JsonProperty("Enabled")]
@@ -94,9 +103,6 @@ namespace TShockEconomyExp.Config
         public long Money { get; set; } = 5;
     }
 
-    /// <summary>
-    /// 생활 콘텐츠: 낚시(Fishing) 보상 설정
-    /// </summary>
     public class FishingConfig
     {
         [JsonProperty("Enabled")]
@@ -111,7 +117,6 @@ namespace TShockEconomyExp.Config
         [JsonProperty("DefaultMoney")]
         public long DefaultMoney { get; set; } = 30;
 
-        // 희귀/상자 낚시 보너스 배율
         [JsonProperty("CrateExpMultiplier")]
         public double CrateExpMultiplier { get; set; } = 3.0;
 
@@ -119,9 +124,6 @@ namespace TShockEconomyExp.Config
         public double CrateMoneyMultiplier { get; set; } = 4.0;
     }
 
-    /// <summary>
-    /// RPG 직업별 고유 지속 패시브 버프 설정
-    /// </summary>
     public class JobPassiveConfig
     {
         [JsonProperty("Enabled")]
@@ -143,40 +145,29 @@ namespace TShockEconomyExp.Config
         public List<int> SummonerBuffs { get; set; } = new() { 115, 3 };
     }
 
-    /// <summary>
-    /// 파티/팀 레이드 사냥 경험치·골드 공유 설정
-    /// </summary>
     public class PartyConfig
     {
         [JsonProperty("Enabled")]
         public bool Enabled { get; set; } = true;
 
-        // 같은 팀원 공유 가능 최대 반경 (타일 단위, 기본 100타일)
         [JsonProperty("ShareTileRadius")]
         public double ShareTileRadius { get; set; } = 100.0;
 
-        // 파티 사냥 보너스 경험치 (팀원이 1명 추가될 때마다 +15%씩 전체 경험치 증가)
         [JsonProperty("BonusExpPerMemberRatio")]
         public double BonusExpPerMemberRatio { get; set; } = 0.15;
 
-        // 골드도 팀원들과 균등 분배 여부
         [JsonProperty("ShareMoney")]
         public bool ShareMoney { get; set; } = true;
     }
 
-    /// <summary>
-    /// 장비 재련/강화(Reforge/Enhance) 시스템 설정
-    /// </summary>
     public class EnhanceConfig
     {
         [JsonProperty("Enabled")]
         public bool Enabled { get; set; } = true;
 
-        // 1회 재련 기본 비용 (골드)
         [JsonProperty("BaseCost")]
         public long BaseCost { get; set; } = 1000;
 
-        // 최상급 접두사(Godly, Legendary, Unreal, Mythical 등) 당첨 보너스 배율
         [JsonProperty("GodlyChanceMultiplier")]
         public double GodlyChanceMultiplier { get; set; } = 1.0;
     }

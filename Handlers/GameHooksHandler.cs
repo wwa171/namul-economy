@@ -18,7 +18,6 @@ namespace TShockEconomyExp.Handlers
             ServerApi.Hooks.GameUpdate.Register(plugin, OnGameUpdate);
             ServerApi.Hooks.ServerChat.Register(plugin, OnServerChat);
 
-            // TShock 채광(TileEdit) 및 낚시(ItemDrop) 이벤트 등록
             GetDataHandlers.TileEdit.Register(OnTileEdit);
             GetDataHandlers.ItemDrop.Register(OnItemDrop);
         }
@@ -36,14 +35,10 @@ namespace TShockEconomyExp.Handlers
             GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
         }
 
-        /// <summary>
-        /// 🌟 채팅 메시지 칭호(Title) 프리픽스 실시간 적용
-        /// </summary>
         private static void OnServerChat(ServerChatEventArgs args)
         {
             if (args.Handled || !PluginMain.TitleConfig.Enabled) return;
 
-            // 명령어(/) 입력은 채팅 프리픽스 가로채지 않음
             if (args.Text.StartsWith(TShock.Config.Settings.CommandSpecifier) ||
                 args.Text.StartsWith(TShock.Config.Settings.CommandSilentSpecifier))
                 return;
@@ -56,11 +51,9 @@ namespace TShockEconomyExp.Handlers
 
             args.Handled = true;
 
-            // 칭호 접두사 결합: [모험의 시작] <유저이름> 메시지
             string prefix = string.Format(PluginMain.TitleConfig.PrefixFormat, title.Name);
             string formattedMessage = $"{prefix} {player.Group.Prefix}{player.Name}{player.Group.Suffix}: {args.Text}";
 
-            // 색상 파싱
             var color = Microsoft.Xna.Framework.Color.White;
             if (!string.IsNullOrEmpty(title.ColorHex) && title.ColorHex.Length == 6)
             {
@@ -99,7 +92,6 @@ namespace TShockEconomyExp.Handlers
                 player.SendInfoMessage($"[RPG] 미분배 스탯 포인트가 {rpgData.StatPoints}개 있습니다! (/스탯분배 로 스탯을 올리세요)");
             }
 
-            // 접속 시 칭호 자동 해금 상태 체크
             CheckTitleUnlocks(player);
         }
 
@@ -117,9 +109,6 @@ namespace TShockEconomyExp.Handlers
             }
         }
 
-        /// <summary>
-        /// 🌟 직업별 지속 패시브 버프 유지
-        /// </summary>
         private static void OnGameUpdate(EventArgs args)
         {
             var pCfg = PluginMain.Config.JobPassives;
@@ -154,9 +143,6 @@ namespace TShockEconomyExp.Handlers
             }
         }
 
-        /// <summary>
-        /// 🌟 낚시(Fishing) 보상
-        /// </summary>
         private static void OnItemDrop(object? sender, GetDataHandlers.ItemDropEventArgs args)
         {
             var fCfg = PluginMain.Config.Fishing;
@@ -185,7 +171,6 @@ namespace TShockEconomyExp.Handlers
                     money = (long)(money * fCfg.CrateMoneyMultiplier);
                 }
 
-                // 칭호 보너스 적용
                 var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
                 if (title != null)
                 {
@@ -204,9 +189,6 @@ namespace TShockEconomyExp.Handlers
             }
         }
 
-        /// <summary>
-        /// 🌟 채광(Mining) 생활 콘텐츠
-        /// </summary>
         private static void OnTileEdit(object? sender, GetDataHandlers.TileEditEventArgs args)
         {
             var mCfg = PluginMain.Config.Mining;
@@ -260,7 +242,8 @@ namespace TShockEconomyExp.Handlers
         }
 
         /// <summary>
-        /// 🌟 스폰 거리 비례 몬스터 스펙 강화
+        /// 🌟 개별 플레이어 기준 거리 비례 몬스터 스펙 강화 (Distance Scaling)
+        /// - 몬스터가 스폰되었을 때 가장 가까운(또는 타겟인) 플레이어의 '개인 스폰/침대 위치'를 기준으로 거리를 개별 계산
         /// </summary>
         private static void OnNpcSpawn(NpcSpawnEventArgs args)
         {
@@ -274,14 +257,45 @@ namespace TShockEconomyExp.Handlers
             if (npc == null || !npc.active || npc.friendly || npc.boss) return;
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
-            double spawnTileX = Main.spawnTileX;
-            double spawnTileY = Main.spawnTileY;
-
             double npcTileX = npc.position.X / 16.0;
             double npcTileY = npc.position.Y / 16.0;
 
-            double dx = Math.Abs(npcTileX - spawnTileX);
-            double dy = Math.Abs(npcTileY - spawnTileY);
+            // 🌟 1. 몬스터 근처에 있는 가장 가까운 접속 플레이어 탐색 (개별 플레이어 기준)
+            TSPlayer? closestPlayer = null;
+            double minPlayerDistance = double.MaxValue;
+
+            foreach (var p in TShock.Players)
+            {
+                if (p != null && p.Active && p.IsLoggedIn)
+                {
+                    double pDist = Math.Sqrt(Math.Pow((p.X / 16.0) - npcTileX, 2) + Math.Pow((p.Y / 16.0) - npcTileY, 2));
+                    if (pDist < minPlayerDistance)
+                    {
+                        minPlayerDistance = pDist;
+                        closestPlayer = p;
+                    }
+                }
+            }
+
+            if (closestPlayer == null) return;
+
+            // 🌟 2. 해당 개별 플레이어의 개인 스폰 위치 결정 (침대 스폰이 있으면 개인 침대, 없으면 기본 스폰)
+            double originTileX = Main.spawnTileX;
+            double originTileY = Main.spawnTileY;
+
+            if (cfg.SpawnOriginType.Equals("PlayerPersonalSpawn", StringComparison.OrdinalIgnoreCase))
+            {
+                var tPlayer = closestPlayer.TPlayer;
+                if (tPlayer.SpawnX > 0 && tPlayer.SpawnY > 0)
+                {
+                    originTileX = tPlayer.SpawnX;
+                    originTileY = tPlayer.SpawnY;
+                }
+            }
+
+            // 🌟 3. 개별 플레이어 기준 거리 계산
+            double dx = Math.Abs(npcTileX - originTileX);
+            double dy = Math.Abs(npcTileY - originTileY);
 
             double distanceTiles = cfg.DistanceCalculationMode.ToLowerInvariant() switch
             {
@@ -336,7 +350,6 @@ namespace TShockEconomyExp.Handlers
             var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
             double bonusRatio = (rpg.Strength * 0.015) + (rpg.Dexterity * 0.015) + (rpg.Intelligence * 0.015);
 
-            // 🌟 칭호 공격력 보너스 추가 합산
             var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
             if (title != null && title.BonusDamageRatio > 0)
             {
@@ -363,14 +376,12 @@ namespace TShockEconomyExp.Handlers
             long totalExpGain = Math.Max(0, (long)(effectiveTotalDamage * expRatio));
             long totalMoneyGain = Math.Max(0, (long)(effectiveTotalDamage * moneyRatio));
 
-            // 칭호 경험치/골드 획득량 보너스
             if (title != null)
             {
                 if (title.BonusExpRatio > 0) totalExpGain = (long)(totalExpGain * (1.0 + title.BonusExpRatio));
                 if (title.BonusMoneyRatio > 0) totalMoneyGain = (long)(totalMoneyGain * (1.0 + title.BonusMoneyRatio));
             }
 
-            // 파티 사냥 분배
             var partyCfg = PluginMain.Config.Party;
             List<TSPlayer> nearbyTeamMembers = new();
 
@@ -436,7 +447,6 @@ namespace TShockEconomyExp.Handlers
             TSPlayer player = TShock.Players[targetIndex];
             if (player == null || !player.IsLoggedIn) return;
 
-            // 킬 카운트 통계 누적 및 칭호 해금 검사
             PluginMain.TitleService.IncrementStat(player.Account.Name, npc.boss ? "boss" : "kill", 1);
             CheckTitleUnlocks(player);
 

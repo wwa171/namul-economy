@@ -104,8 +104,8 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- 2. 스폰 거리 비례 몬스터 강화 설정 -->
-                <GroupBox x:Name="GrpDistance" Header="스폰 지점 거리 비례 몬스터 강화 (Distance Scaling)">
+                <!-- 2. 플레이어별 거리 비례 몬스터 강화 설정 -->
+                <GroupBox x:Name="GrpDistance" Header="플레이어별 거리 비례 몬스터 강화 (Distance Scaling)">
                     <StackPanel>
                         <CheckBox x:Name="ChkDistanceEnabled" Content="거리 비례 몬스터 강화 활성화" Foreground="#CDD6F4" FontWeight="Bold" Margin="0,4,0,10" IsChecked="True"/>
                         
@@ -122,42 +122,50 @@
                                 <RowDefinition Height="36"/>
                                 <RowDefinition Height="36"/>
                                 <RowDefinition Height="36"/>
+                                <RowDefinition Height="36"/>
                             </Grid.RowDefinitions>
 
+                            <!-- 스폰 기준점 (개인 스폰/침대 vs 월드 공용) -->
+                            <Label x:Name="LblSpawnOrigin" Grid.Row="0" Grid.Column="0" Content="스폰 기준점:"/>
+                            <ComboBox x:Name="CmbSpawnOrigin" Grid.Row="0" Grid.Column="1" Background="#313244" Foreground="#11111B" SelectedIndex="0">
+                                <ComboBoxItem Content="PlayerPersonalSpawn (유저별 개인스폰/침대)"/>
+                                <ComboBoxItem Content="WorldSpawn (월드 공용 스폰)"/>
+                            </ComboBox>
+
                             <!-- 거리 계산 방식 -->
-                            <Label x:Name="LblDistanceMode" Grid.Row="0" Grid.Column="0" Content="거리 계산 방식:"/>
-                            <ComboBox x:Name="CmbDistanceMode" Grid.Row="0" Grid.Column="1" Background="#313244" Foreground="#11111B" SelectedIndex="0">
+                            <Label x:Name="LblDistanceMode" Grid.Row="0" Grid.Column="3" Content="거리 계산 방식:"/>
+                            <ComboBox x:Name="CmbDistanceMode" Grid.Row="0" Grid.Column="4" Background="#313244" Foreground="#11111B" SelectedIndex="0">
                                 <ComboBoxItem Content="Euclidean (직선거리)"/>
                                 <ComboBoxItem Content="HorizontalOnly (좌우거리)"/>
                                 <ComboBoxItem Content="Taxicab (맨해튼거리)"/>
                             </ComboBox>
 
                             <!-- 안전지대 반경 -->
-                            <Label x:Name="LblSafeZone" Grid.Row="0" Grid.Column="3" Content="안전 지대 반경 (타일):"/>
-                            <TextBox x:Name="TxtSafeZone" Grid.Row="0" Grid.Column="4" Text="200"/>
+                            <Label x:Name="LblSafeZone" Grid.Row="1" Grid.Column="0" Content="개인 안전 지대 (타일):"/>
+                            <TextBox x:Name="TxtSafeZone" Grid.Row="1" Grid.Column="1" Text="200"/>
 
                             <!-- 강화 스텝 타일 단위 -->
-                            <Label x:Name="LblStepTiles" Grid.Row="1" Grid.Column="0" Content="강화 스텝 거리 (타일):"/>
-                            <TextBox x:Name="TxtStepTiles" Grid.Row="1" Grid.Column="1" Text="100"/>
+                            <Label x:Name="LblStepTiles" Grid.Row="1" Grid.Column="3" Content="강화 스텝 거리 (타일):"/>
+                            <TextBox x:Name="TxtStepTiles" Grid.Row="1" Grid.Column="4" Text="100"/>
 
                             <!-- 스텝당 체력 증가율 -->
-                            <Label x:Name="LblHpStep" Grid.Row="1" Grid.Column="3" Content="스텝당 체력 증가 (+%):"/>
-                            <TextBox x:Name="TxtHpStep" Grid.Row="1" Grid.Column="4" Text="0.05"/>
+                            <Label x:Name="LblHpStep" Grid.Row="2" Grid.Column="0" Content="스텝당 체력 증가 (+%):"/>
+                            <TextBox x:Name="TxtHpStep" Grid.Row="2" Grid.Column="1" Text="0.05"/>
 
                             <!-- 스텝당 공격력 증가율 -->
-                            <Label x:Name="LblDmgStep" Grid.Row="2" Grid.Column="0" Content="스텝당 공격력 증가 (+%):"/>
-                            <TextBox x:Name="TxtDmgStep" Grid.Row="2" Grid.Column="1" Text="0.03"/>
+                            <Label x:Name="LblDmgStep" Grid.Row="2" Grid.Column="3" Content="스텝당 공격력 증가 (+%):"/>
+                            <TextBox x:Name="TxtDmgStep" Grid.Row="2" Grid.Column="4" Text="0.03"/>
 
                             <!-- 최대 체력 배율 -->
-                            <Label x:Name="LblMaxHpMult" Grid.Row="2" Grid.Column="3" Content="최대 체력 상한선 (배수):"/>
-                            <TextBox x:Name="TxtMaxHpMult" Grid.Row="2" Grid.Column="4" Text="10.0"/>
+                            <Label x:Name="LblMaxHpMult" Grid.Row="3" Grid.Column="0" Content="최대 체력 상한선 (배수):"/>
+                            <TextBox x:Name="TxtMaxHpMult" Grid.Row="3" Grid.Column="1" Text="10.0"/>
 
                             <!-- 최대 공격력 배율 -->
-                            <Label x:Name="LblMaxDmgMult" Grid.Row="3" Grid.Column="0" Content="최대 공격력 상한선 (배수):"/>
-                            <TextBox x:Name="TxtMaxDmgMult" Grid.Row="3" Grid.Column="1" Text="5.0"/>
+                            <Label x:Name="LblMaxDmgMult" Grid.Row="3" Grid.Column="3" Content="최대 공격력 상한선 (배수):"/>
+                            <TextBox x:Name="TxtMaxDmgMult" Grid.Row="3" Grid.Column="4" Text="5.0"/>
 
                             <!-- 보상 연동 여부 -->
-                            <CheckBox x:Name="ChkScaleReward" Grid.Row="3" Grid.Column="3" Grid.ColumnSpan="2" Content="거리로 강해진 만큼 경험치/골드 보상도 비례 증가" Foreground="#CDD6F4" VerticalAlignment="Center" IsChecked="True"/>
+                            <CheckBox x:Name="ChkScaleReward" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4" Content="거리로 강해진 만큼 경험치/골드 보상도 비례 증가" Foreground="#CDD6F4" VerticalAlignment="Center" IsChecked="True"/>
                         </Grid>
                     </StackPanel>
                 </GroupBox>
