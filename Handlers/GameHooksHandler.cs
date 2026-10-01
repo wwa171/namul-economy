@@ -14,6 +14,9 @@ namespace TShockEconomyExp.Handlers
     {
         private static DateTime _lastPassiveTick = DateTime.UtcNow;
         private static DateTime _lastHudTick = DateTime.UtcNow;
+        private static readonly int[] _lastHeldItemNetId = new int[Main.maxPlayers];
+        private static readonly byte[] _lastHeldItemPrefix = new byte[Main.maxPlayers];
+        private static readonly DateTime[] _itemTooltipDisplayUntil = new DateTime[Main.maxPlayers];
 
         public static void RegisterHooks(TerrariaPlugin plugin)
         {
@@ -265,6 +268,64 @@ namespace TShockEconomyExp.Handlers
                 }
             }
 
+            // 🌟 들고 있는 아이템 변경 감지 및 커스텀 툴팁 출력
+            foreach (var player in TShock.Players)
+            {
+                if (player == null || !player.Active || !player.IsLoggedIn) continue;
+
+                var tPlayer = player.TPlayer;
+                Item heldItem = tPlayer.HeldItem;
+                int netId = (heldItem != null && !heldItem.IsAir) ? heldItem.type : 0;
+                byte prefix = (heldItem != null && !heldItem.IsAir) ? heldItem.prefix : (byte)0;
+
+                int pIndex = player.Index;
+                if (pIndex >= 0 && pIndex < Main.maxPlayers)
+                {
+                    if (_lastHeldItemNetId[pIndex] != netId || _lastHeldItemPrefix[pIndex] != prefix)
+                    {
+                        _lastHeldItemNetId[pIndex] = netId;
+                        _lastHeldItemPrefix[pIndex] = prefix;
+
+                        if (netId > 0 && heldItem != null && !heldItem.IsAir && (heldItem.damage > 0 || heldItem.defense > 0 || heldItem.accessory))
+                        {
+                            var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
+                            var statCfg = PluginMain.Config.StatDamage;
+
+                            string category = "일반";
+                            double bonusRatio = 0.0;
+
+                            if (heldItem.magic || heldItem.mana > 0)
+                            {
+                                category = "마법";
+                                bonusRatio = rpg.Sorcerer * statCfg.SorcererDamagePerPoint;
+                            }
+                            else if (heldItem.summon || heldItem.sentry)
+                            {
+                                category = "소환";
+                                bonusRatio = rpg.Summoner * statCfg.SummonerDamagePerPoint;
+                            }
+                            else if (heldItem.ranged)
+                            {
+                                category = "원거리";
+                                bonusRatio = rpg.Ranger * statCfg.RangerDamagePerPoint;
+                            }
+                            else if (heldItem.melee || !heldItem.noMelee)
+                            {
+                                category = "근접";
+                                bonusRatio = rpg.Warrior * statCfg.WarriorDamagePerPoint;
+                            }
+
+                            string bonusStr = bonusRatio > 0 ? $" | 💥 {category} 보너스 +{(bonusRatio * 100):F1}%" : "";
+                            string itemTooltip = $"✨ [{heldItem.AffixName()}] (공격력: {heldItem.damage}{bonusStr})";
+
+                            // 4초간 툴팁 표시
+                            _itemTooltipDisplayUntil[pIndex] = DateTime.UtcNow.AddSeconds(4);
+                            HudHelper.ShowStatusText(player, itemTooltip);
+                        }
+                    }
+                }
+            }
+
             // 미니맵/상태 영역 실시간 RPG HUD 안내 (5초 주기)
             if (PluginMain.Config.EnableHudBroadcast && (DateTime.UtcNow - _lastHudTick).TotalSeconds >= 5)
             {
@@ -272,6 +333,13 @@ namespace TShockEconomyExp.Handlers
                 foreach (var player in TShock.Players)
                 {
                     if (player == null || !player.Active || !player.IsLoggedIn) continue;
+
+                    // 아이템 툴팁 표시 중인 동안에는 정기 HUD 출력을 건너뜀
+                    if (player.Index >= 0 && player.Index < Main.maxPlayers && DateTime.UtcNow < _itemTooltipDisplayUntil[player.Index])
+                    {
+                        continue;
+                    }
+
                     var rpg = PluginMain.RpgService.GetRpgData(player.Account.Name);
                     int lvl = PluginMain.ExpService.GetLevel(player.Account.Name);
                     long curExp = PluginMain.ExpService.GetCurrentLevelExpProgress(player.Account.Name);
