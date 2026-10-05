@@ -38,6 +38,10 @@ jobs:
       run: |
         dotnet build TShockEconomyExp.csproj -c Release
 
+    - name: Run Automated Unit Tests (xUnit)
+      run: |
+        dotnet test TShockEconomyExp.Tests/TShockEconomyExp.Tests.csproj -c Release
+
     - name: Publish Lightweight GUI Config Tool
       run: |
         dotnet publish NamulRpgConfigTool/NamulRpgConfigTool.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true

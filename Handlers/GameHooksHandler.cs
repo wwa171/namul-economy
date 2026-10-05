@@ -7,6 +7,7 @@ using Terraria.Localization;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockEconomyExp.Config;
+using TShockEconomyExp.Services;
 
 namespace TShockEconomyExp.Handlers
 {
@@ -751,11 +752,8 @@ namespace TShockEconomyExp.Handlers
                         }
                     }
 
-                    double bonusMultiplier = summonerLevel * bCfg.HealthIncreasePerLevel;
-                    double totalMultiplier = Math.Min(bCfg.MaxHealthMultiplier, 1.0 + bonusMultiplier);
-
+                    var (scaledLife, totalMultiplier) = BossScalingCalculator.Calculate(npc.lifeMax, summonerLevel, bCfg.HealthIncreasePerLevel, bCfg.MaxHealthMultiplier);
                     int originalLife = npc.lifeMax;
-                    int scaledLife = (int)(originalLife * totalMultiplier);
 
                     npc.lifeMax = scaledLife;
                     npc.life = scaledLife;

@@ -36,6 +36,9 @@ namespace TShockEconomyExp.Services
         /// </summary>
         public long GetExpToNextLevel(int currentLevel)
         {
+            if (currentLevel <= 0)
+                throw new ArgumentOutOfRangeException(nameof(currentLevel), "레벨은 1 이상이어야 합니다.");
+
             if (currentLevel >= _config.MaxLevel) return 0;
             return (long)(_config.BaseExpRequirement * Math.Pow(currentLevel, _config.ExpRequirementMultiplier));
         }

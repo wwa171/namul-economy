@@ -8,7 +8,7 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <AssemblyName>TShockEconomyExp</AssemblyName>
     <RootNamespace>TShockEconomyExp</RootNamespace>
-    <DefaultItemExcludes>$(DefaultItemExcludes);NamulRpgConfigTool\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);NamulRpgConfigTool\**;TShockEconomyExp.Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
