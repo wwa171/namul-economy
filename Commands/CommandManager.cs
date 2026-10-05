@@ -893,25 +893,44 @@ namespace TShockEconomyExp.Commands
                     return;
                 }
 
-                if (!PluginMain.AuctionService.RemoveListing(id))
+                // 원자적 잔액 차감 시도
+                if (!PluginMain.EconomyService.RemoveBalance(args.Player.Account.Name, listing.Price, $"경매장 구매: {listing.ItemName}"))
                 {
-                    args.Player.SendErrorMessage("구매 처리에 실패했습니다. (이미 판매됨)");
+                    args.Player.SendErrorMessage($"골드가 부족하거나 결제에 실패했습니다! (보유 골드 재확인 필요)");
                     return;
                 }
 
-                // 구매자 잔액 차감 & 판매자 입금
-                PluginMain.EconomyService.RemoveBalance(args.Player.Account.Name, listing.Price, $"경매장 구매: {listing.ItemName}");
+                if (!PluginMain.AuctionService.RemoveListing(id))
+                {
+                    // 매물이 이미 사라진 경우 차감된 금액 즉시 환불
+                    PluginMain.EconomyService.AddBalance(args.Player.Account.Name, listing.Price, $"경매장 구매 실패 환불: {listing.ItemName}");
+                    args.Player.SendErrorMessage("구매 처리에 실패했습니다. (이미 판매되었거나 취소된 물품 - 골드 환불 완료)");
+                    return;
+                }
+
+                // 판매자에게 대금 입금
                 PluginMain.EconomyService.AddBalance(listing.SellerAccount, listing.Price, $"경매장 판매 대금: {listing.ItemName}");
 
                 // 구매자 인벤토리에 아이템 지급
-                Item newItem = new Item();
-                newItem.SetDefaults(listing.ItemNetId);
-                newItem.stack = listing.Stack;
-                newItem.prefix = listing.Prefix;
+                try
+                {
+                    Item newItem = new Item();
+                    newItem.SetDefaults(listing.ItemNetId);
+                    newItem.stack = listing.Stack;
+                    newItem.prefix = listing.Prefix;
 
-                tPlayer.inventory[freeSlot] = newItem;
-                NetMessage.SyncOnePlayer_ItemArray(args.Player.Index, -1, -1, tPlayer.inventory, freeSlot);
-                args.Player.SaveServerCharacter();
+                    tPlayer.inventory[freeSlot] = newItem;
+                    NetMessage.SyncOnePlayer_ItemArray(args.Player.Index, -1, -1, tPlayer.inventory, freeSlot);
+                    args.Player.SaveServerCharacter();
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.Error($"[Auction] 아이템 지급 중 예외 발생: {ex}");
+                    // 예외 발생 시 구매자에게 환불 조치
+                    PluginMain.EconomyService.AddBalance(args.Player.Account.Name, listing.Price, $"아이템 지급 오류 환불: {listing.ItemName}");
+                    args.Player.SendErrorMessage("아이템 인벤토리 지급 중 오류가 발생하여 결제 금액이 전액 환불되었습니다.");
+                    return;
+                }
 
                 args.Player.SendSuccessMessage($"🎉 [경매 구매 완료] [{listing.ItemName}]을(를) {listing.Price:N0} {PluginMain.Config.CurrencyName}에 구매했습니다!");
 

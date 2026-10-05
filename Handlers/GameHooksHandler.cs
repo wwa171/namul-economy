@@ -421,9 +421,6 @@ namespace TShockEconomyExp.Handlers
         
         private static void OnPlayerSlot(object? sender, GetDataHandlers.PlayerSlotEventArgs args)
         {
-            var bCfg = PluginMain.Config.BossScaling;
-            if (!bCfg.Enabled) return;
-
             TSPlayer player = args.Player;
             if (player == null || !player.IsLoggedIn) return;
 
@@ -433,7 +430,7 @@ namespace TShockEconomyExp.Handlers
             string key = netId.ToString();
             int playerLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
 
-            // (1) 장비 착용/소지 레벨 제한 검사
+            // (1) 장비 착용/소지 레벨 제한 검사 (BossScaling 설정과 독립적으로 동작)
             var iCfg = PluginMain.Config.ItemRequirements;
             if (iCfg != null && iCfg.Enabled && iCfg.Requirements != null && iCfg.Requirements.TryGetValue(key, out int itemReqLevel))
             {
@@ -448,7 +445,8 @@ namespace TShockEconomyExp.Handlers
             }
 
             // (2) 보스 소환 아이템 레벨 제한 검사
-            if (bCfg.BossItemLevelRequirements != null && bCfg.BossItemLevelRequirements.TryGetValue(key, out int requiredLevel))
+            var bCfg = PluginMain.Config.BossScaling;
+            if (bCfg != null && bCfg.Enabled && bCfg.BossItemLevelRequirements != null && bCfg.BossItemLevelRequirements.TryGetValue(key, out int requiredLevel))
             {
                 if (playerLevel < requiredLevel)
                 {
@@ -478,21 +476,32 @@ namespace TShockEconomyExp.Handlers
             int itemId = args.Type;
             if (itemId <= 0) return;
 
-            // 🌟 장비 드롭 시 무작위 스탯/접두사(Affix) 룰렛
+            // 🌟 장비 드롭 시 무작위 스탯/접두사(Affix) 룰렛 (실제 월드 아이템에 동기화 적용)
             var aCfg = PluginMain.Config.RandomAffix;
             if (aCfg != null && aCfg.Enabled)
             {
-                Item testItem = new Item();
-                testItem.SetDefaults(itemId);
-                if (testItem.maxStack == 1 && (testItem.damage > 0 || testItem.defense > 0 || testItem.accessory))
+                Item sampleItem = new Item();
+                sampleItem.SetDefaults(itemId);
+                if (sampleItem.maxStack == 1 && (sampleItem.damage > 0 || sampleItem.defense > 0 || sampleItem.accessory))
                 {
                     double roll = Main.rand.NextDouble();
                     if (roll <= aCfg.AffixChance)
                     {
-                        testItem.Prefix(-1); // 무작위 접두사 재련
-                        if (testItem.prefix > 0)
+                        int dropId = args.ID;
+                        if (dropId >= 0 && dropId < Main.maxItems)
                         {
-                            ShowCombatText(player, $"✨ [{testItem.AffixName()}] 드롭!", Color.Gold);
+                            var worldItem = Main.item[dropId];
+                            if (worldItem != null && worldItem.active)
+                            {
+                                worldItem.Prefix(-1);
+                                if (worldItem.prefix > 0)
+                                {
+                                    // 접두사가 반영된 명칭 확인을 위해 샘플 아이템 동기화
+                                    sampleItem.prefix = (byte)worldItem.prefix;
+                                    NetMessage.SendData((int)PacketTypes.ItemDrop, -1, -1, null, dropId);
+                                    ShowCombatText(player, $"✨ [{sampleItem.AffixName()}] 드롭!", Color.Gold);
+                                }
+                            }
                         }
                     }
                 }
@@ -762,7 +771,6 @@ namespace TShockEconomyExp.Handlers
             // ================= 🌟 2. 일반 몬스터 거리 비례 스케일링 =================
             var cfg = PluginMain.Config.DistanceScaling;
             if (!cfg.Enabled) return;
-            if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
             if (PluginMain.Config.BlacklistedNpcNetIds.Contains(npc.netID)) return;
 
             double npcTileX = npc.position.X / 16.0;
