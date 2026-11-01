@@ -39,13 +39,27 @@ namespace TShockEconomyExp.Handlers
         private sealed class BobberCast
         {
             public int PlayerIndex;
+            public string Account = "";
             public long CastTick;
             public float X;
             public float Y;
         }
 
+        // 플레이어 인덱스는 재사용된다. 계정명을 같이 묶어서 인덱스만 같다고
+        // 다른 사람의 창을 물려받지 않게 한다.
+        private readonly struct CatchWindow
+        {
+            public readonly string Account;
+            public readonly long Until;
+            public CatchWindow(string account, long until)
+            {
+                Account = account;
+                Until = until;
+            }
+        }
+
         private static readonly Dictionary<int, BobberCast> _bobberCasts = new(); // projectile index -> cast
-        private static readonly Dictionary<int, long> _catchWindowUntil = new();  // player index -> tick
+        private static readonly Dictionary<int, CatchWindow> _catchWindowUntil = new(); // player index -> window
         private static readonly Dictionary<string, long> _lastFishingRewardTick = new();
         private static readonly object _fishingLock = new();
         private const int MaxBobberCasts = 512;
@@ -543,26 +557,45 @@ namespace TShockEconomyExp.Handlers
             => (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208)
                || (itemId >= 3979 && itemId <= 4002);
 
-        /// <summary>서버 월드 사본으로 해당 좌표에 액체가 있는지 확인한다.</summary>
+        /// <summary>
+        /// 서버 월드 사본으로 해당 좌표 주변에 액체가 있는지 확인한다.
+        /// 찌는 수면에 떠 있어서 좌표가 물 바로 위 공기 타일을 집을 수 있으므로 3×3으로 본다.
+        /// </summary>
         private static bool IsInLiquid(float worldX, float worldY)
         {
             int tx = (int)(worldX / 16f);
             int ty = (int)(worldY / 16f);
-            if (!WorldGen.InWorld(tx, ty, 1)) return false;
-            var tile = Main.tile[tx, ty];
-            return tile != null && tile.liquid > 0;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int x = tx + dx, y = ty + dy;
+                    if (!WorldGen.InWorld(x, y, 1)) continue;
+                    var tile = Main.tile[x, y];
+                    if (tile != null && tile.liquid > 0) return true;
+                }
+            }
+            return false;
         }
 
+        /// <summary>만료된 캐스트를 항상 걷어내고, 그래도 넘치면 오래된 것부터 버린다.</summary>
         private static void PruneBobberCasts(long now)
         {
-            if (_bobberCasts.Count < MaxBobberCasts) return;
             List<int> stale = new();
             foreach (var kv in _bobberCasts)
             {
                 if (now - kv.Value.CastTick > MaxBobberCastAgeMs) stale.Add(kv.Key);
             }
             foreach (int k in stale) _bobberCasts.Remove(k);
-            if (_bobberCasts.Count >= MaxBobberCasts) _bobberCasts.Clear();
+
+            if (_bobberCasts.Count < MaxBobberCasts) return;
+
+            // 전부 지우면 진행 중인 캐스트가 유실된다. 오래된 것만 상한의 1/8씩 버린다.
+            int drop = Math.Max(1, _bobberCasts.Count / 8);
+            foreach (var kv in _bobberCasts.OrderBy(kv => kv.Value.CastTick).Take(drop).ToList())
+            {
+                _bobberCasts.Remove(kv.Key);
+            }
         }
 
         /// <summary>찌 투사체 생성 — 낚시 시도의 시작점을 서버가 직접 기록한다.</summary>
@@ -579,12 +612,14 @@ namespace TShockEconomyExp.Handlers
                 if (args.Owner != player.Index) return;
 
                 long now = Environment.TickCount64;
+                string account = player.Account?.Name ?? player.Name;
                 lock (_fishingLock)
                 {
                     PruneBobberCasts(now);
                     _bobberCasts[args.Index] = new BobberCast
                     {
                         PlayerIndex = player.Index,
+                        Account = account,
                         CastTick = now,
                         X = args.Position.X,
                         Y = args.Position.Y
@@ -608,35 +643,44 @@ namespace TShockEconomyExp.Handlers
                 TSPlayer? player = args.Player;
                 if (player == null || !player.IsLoggedIn) return;
 
+                string account = player.Account?.Name ?? player.Name;
+                long now = Environment.TickCount64;
+
                 BobberCast? cast;
                 lock (_fishingLock)
                 {
                     if (!_bobberCasts.TryGetValue(args.ProjectileIndex, out cast)) return;
                     _bobberCasts.Remove(args.ProjectileIndex);
                 }
-                if (cast.PlayerIndex != player.Index) return;
+
+                // 투사체 인덱스도 재사용된다. 소유자와 계정이 둘 다 맞아야 한다.
+                if (cast.PlayerIndex != player.Index || cast.Account != account) return;
+                if (now - cast.CastTick > MaxBobberCastAgeMs) return;
 
                 // 좌표는 클라이언트 신고값이 아니라 서버가 들고 있는 투사체 사본에서 읽는다.
-                float x = cast.X, y = cast.Y;
+                // TShock은 active인 투사체에 대해서만 이 이벤트를 발생시키고, 제거 전에 부른다.
+                // 사본을 못 읽으면 발사 시점 좌표(허공)로 대신하지 않고 그냥 포기한다.
                 int pi = args.ProjectileIndex;
-                if (pi >= 0 && pi < Main.maxProjectiles)
-                {
-                    Projectile proj = Main.projectile[pi];
-                    if (proj != null && proj.active && _bobberProjectileIds.Contains(proj.type))
-                    {
-                        x = proj.position.X;
-                        y = proj.position.Y;
-                    }
-                }
+                if (pi < 0 || pi >= Main.maxProjectiles) return;
+                Projectile proj = Main.projectile[pi];
+                if (proj == null || !_bobberProjectileIds.Contains(proj.type)) return;
+
+                float x = proj.position.X;
+                float y = proj.position.Y;
 
                 // 물 밖에서 회수한 찌는 낚시가 아니다 (허공 캐스팅 연타 차단).
-                if (!IsInLiquid(x, y)) return;
+                if (!IsInLiquid(x, y))
+                {
+                    TShock.Log.Info($"[Fishing] 물 밖 회수 무시 {account} ({x:0},{y:0})");
+                    return;
+                }
 
-                long window = Environment.TickCount64 + Math.Max(200, fCfg.CatchWindowMs);
+                long window = now + Math.Max(200, fCfg.CatchWindowMs);
                 lock (_fishingLock)
                 {
-                    _catchWindowUntil[player.Index] = window;
+                    _catchWindowUntil[player.Index] = new CatchWindow(account, window);
                 }
+                TShock.Log.Info($"[Fishing] 창 열림 {account} ({x:0},{y:0}) +{fCfg.CatchWindowMs}ms");
             }
             catch (Exception ex)
             {
@@ -658,14 +702,18 @@ namespace TShockEconomyExp.Handlers
 
                 long now = Environment.TickCount64;
 
+                // 진단용: 어떤 아이템이 어떤 경로로 들어오는지 남긴다.
+                TShock.Log.Info($"[Fishing] 슬롯 감지 {account} item={itemId}");
+
                 lock (_fishingLock)
                 {
                     // (1) 서버가 관측한 찌 회수 이력이 없으면 보상하지 않는다.
                     if (fCfg.RequireBobberCatch)
                     {
-                        if (!_catchWindowUntil.TryGetValue(player.Index, out long until)) return;
+                        if (!_catchWindowUntil.TryGetValue(player.Index, out CatchWindow w)) return;
                         _catchWindowUntil.Remove(player.Index);
-                        if (now > until) return;
+                        if (w.Account != account) return;   // 인덱스 재사용 방지
+                        if (now > w.Until) return;
                     }
 
                     // (2) 낚싯대 소지 여부 (보조 검증, 설정으로 끌 수 있음)
