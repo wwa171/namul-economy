@@ -153,6 +153,19 @@ namespace TShockEconomyExp.Config
         /// </summary>
         [JsonProperty("RequireFishingPoleHeld")]
         public bool RequireFishingPoleHeld { get; set; } = true;
+
+        /// <summary>
+        /// 서버가 직접 관측한 찌(Bobber) 생성·회수 이력이 있을 때만 보상한다.
+        /// 클라이언트가 신고하는 드롭 좌표는 위조 가능하므로 사용하지 않는다.
+        /// </summary>
+        [JsonProperty("RequireBobberCatch")]
+        public bool RequireBobberCatch { get; set; } = true;
+
+        /// <summary>
+        /// 찌를 회수한 시점부터 인벤토리에 물고기/상자가 들어오기까지 허용하는 시간(밀리초).
+        /// </summary>
+        [JsonProperty("CatchWindowMs")]
+        public int CatchWindowMs { get; set; } = 2000;
     }
 
     public class JobPassiveConfig

@@ -65,7 +65,7 @@ namespace TShockEconomyExp
             GameHooksHandler.RegisterHooks(this);
             CommandManager.RegisterCommands();
 
-            TShock.Log.ConsoleInfo($"[TShockEconomyExp] RPG v1.8.0 4대 직업 데미지 스탯 시스템 로드 완료! (저장소: {configDir})");
+            TShock.Log.ConsoleInfo($"[TShockEconomyExp] RPG v1.9.0 4대 직업 데미지 스탯 시스템 로드 완료! (저장소: {configDir})");
         }
 
         private void OnLevelUpEvent(object? sender, LevelUpEventArgs e)

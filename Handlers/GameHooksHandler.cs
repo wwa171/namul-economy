@@ -30,9 +30,27 @@ namespace TShockEconomyExp.Handlers
         private static readonly Dictionary<int, DateTime> _npcCombatTextCooldown = new();
         private static readonly object _npcCombatTextLock = new();
 
-        // 🌟 낚시 어뷰징 방지 (최근 낚시 성공 시간 및 낚싯대 아이템 ID 목록)
-        private static readonly Dictionary<string, DateTime> _lastFishingSuccessTimes = new();
+        // 🌟 낚시 어뷰징 방지
+        // 판정 근거는 서버가 직접 관측한 값만 쓴다. 클라이언트가 신고하는 드롭 좌표나
+        // 슬롯 선택은 위조 가능하므로 근거로 쓰지 않는다.
+        //   (1) 찌(Bobber) 투사체의 생성·소멸      ← 클라이언트가 임의로 만들 수 없음
+        //   (2) 소멸 시점의 찌 좌표 + 그 타일의 액체 ← 서버 월드 사본
+        //   (3) 그 직후 인벤토리 슬롯에 물고기/상자 등장
+        private sealed class BobberCast
+        {
+            public int PlayerIndex;
+            public long CastTick;
+            public float X;
+            public float Y;
+        }
+
+        private static readonly Dictionary<int, BobberCast> _bobberCasts = new(); // projectile index -> cast
+        private static readonly Dictionary<int, long> _catchWindowUntil = new();  // player index -> tick
+        private static readonly Dictionary<string, long> _lastFishingRewardTick = new();
         private static readonly object _fishingLock = new();
+        private const int MaxBobberCasts = 512;
+        private const int MaxFishingCooldownEntries = 5000;
+        private const long MaxBobberCastAgeMs = 90000;
         private static readonly HashSet<int> _fishingPoleItemIds = new()
         {
             2289, 2291, 2292, 2293, 2294, 2295, 2296, 2297, 4325, 4442, 4444
@@ -56,6 +74,8 @@ namespace TShockEconomyExp.Handlers
             GetDataHandlers.TileEdit.Register(OnTileEdit);
             GetDataHandlers.ItemDrop.Register(OnItemDrop);
             GetDataHandlers.PlayerSlot.Register(OnPlayerSlot);
+            GetDataHandlers.NewProjectile.Register(OnNewProjectile);
+            GetDataHandlers.ProjectileKill.Register(OnProjectileKill);
         }
 
         public static void UnregisterHooks(TerrariaPlugin plugin)
@@ -69,6 +89,8 @@ namespace TShockEconomyExp.Handlers
 
             GetDataHandlers.TileEdit.UnRegister(OnTileEdit);
             GetDataHandlers.ItemDrop.UnRegister(OnItemDrop);
+            GetDataHandlers.NewProjectile.UnRegister(OnNewProjectile);
+            GetDataHandlers.ProjectileKill.UnRegister(OnProjectileKill);
             GetDataHandlers.PlayerSlot.UnRegister(OnPlayerSlot);
         }
 
@@ -428,6 +450,10 @@ namespace TShockEconomyExp.Handlers
             int netId = args.Type;
             if (netId <= 0) return;
 
+            // 낚시 보상은 인벤토리에 물고기/상자가 등장하는 순간 판정한다.
+            // 보스 스케일링 설정과 무관하게 동작해야 하므로 아래 가드들보다 먼저 실행한다.
+            TryAwardFishingCatch(player, netId);
+
             string key = netId.ToString();
             int playerLevel = PluginMain.ExpService.GetLevel(player.Account.Name);
 
@@ -468,9 +494,6 @@ namespace TShockEconomyExp.Handlers
 
         private static void OnItemDrop(object? sender, GetDataHandlers.ItemDropEventArgs args)
         {
-            var fCfg = PluginMain.Config.Fishing;
-            if (!fCfg.Enabled) return;
-
             TSPlayer player = args.Player;
             if (player == null || !player.IsLoggedIn) return;
 
@@ -508,65 +531,169 @@ namespace TShockEconomyExp.Handlers
                 }
             }
 
-            bool isCrate = (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208) || (itemId >= 3979 && itemId <= 4002);
-            bool isFish = (itemId >= 2290 && itemId <= 2321) || (itemId >= 2425 && itemId <= 2430);
+        }
 
-            if (isCrate || isFish)
+        // ── 낚시 판정 ──────────────────────────────────────────
+        private static bool IsFishOrCrate(int itemId)
+            => (itemId >= 2290 && itemId <= 2321) || (itemId >= 2425 && itemId <= 2430)
+               || (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208)
+               || (itemId >= 3979 && itemId <= 4002);
+
+        private static bool IsCrateItem(int itemId)
+            => (itemId >= 2334 && itemId <= 2336) || (itemId >= 3203 && itemId <= 3208)
+               || (itemId >= 3979 && itemId <= 4002);
+
+        /// <summary>서버 월드 사본으로 해당 좌표에 액체가 있는지 확인한다.</summary>
+        private static bool IsInLiquid(float worldX, float worldY)
+        {
+            int tx = (int)(worldX / 16f);
+            int ty = (int)(worldY / 16f);
+            if (!WorldGen.InWorld(tx, ty, 1)) return false;
+            var tile = Main.tile[tx, ty];
+            return tile != null && tile.liquid > 0;
+        }
+
+        private static void PruneBobberCasts(long now)
+        {
+            if (_bobberCasts.Count < MaxBobberCasts) return;
+            List<int> stale = new();
+            foreach (var kv in _bobberCasts)
             {
-                // 🌟 [어뷰징 방지 1] 낚싯대(Fishing Pole)를 손에 들고 있는지 검증
-                if (fCfg.RequireFishingPoleHeld)
-                {
-                    Item heldItem = player.TPlayer.HeldItem;
-                    if (heldItem == null || heldItem.IsAir || !_fishingPoleItemIds.Contains(heldItem.type))
-                    {
-                        return; // 낚싯대를 들고 있지 않은 상태에서 드롭된 물고기/상자는 보상 지급 거부
-                    }
-                }
+                if (now - kv.Value.CastTick > MaxBobberCastAgeMs) stale.Add(kv.Key);
+            }
+            foreach (int k in stale) _bobberCasts.Remove(k);
+            if (_bobberCasts.Count >= MaxBobberCasts) _bobberCasts.Clear();
+        }
 
-                // 🌟 [어뷰징 방지 1-1] 플레이어가 실제로 던져놓은 낚시 찌(Bobber) 투사체 검증
-                // 낚싯대를 들고 가만히 서 있을 때 다른 유저가 물고기/상자를 던져주는 어뷰징 원천 차단!
-                // 물속의 본인 소유 찌(Bobber)가 존재하고, 드롭된 아이템 좌표(args.Position)가 찌 근처(물속 낚시 위치)인지 정밀 검증
-                bool hasValidBobberCatch = false;
-                for (int i = 0; i < Main.maxProjectiles; i++)
-                {
-                    var proj = Main.projectile[i];
-                    if (proj != null && proj.active && proj.owner == player.Index && _bobberProjectileIds.Contains(proj.type))
-                    {
-                        // 드롭된 아이템과 활성 찌(Bobber) 투사체 사이의 거리 검증
-                        // 타인이 플레이어 발밑에 아이템을 던져주는 경우: 찌는 물속에 있고 아이템은 플레이어 몸에 떨어지므로 찌와의 거리가 멂
-                        // 실제 낚시 성공: 아이템이 찌(Bobber) 위치에서 생성되어 튀어오름 (반경 160픽셀 = 10타일 이내)
-                        float dx = args.Position.X - proj.position.X;
-                        float dy = args.Position.Y - proj.position.Y;
-                        float distSq = dx * dx + dy * dy;
-                        if (distSq <= 160f * 160f)
-                        {
-                            hasValidBobberCatch = true;
-                            break;
-                        }
-                    }
-                }
+        /// <summary>찌 투사체 생성 — 낚시 시도의 시작점을 서버가 직접 기록한다.</summary>
+        private static void OnNewProjectile(object? sender, GetDataHandlers.NewProjectileEventArgs args)
+        {
+            try
+            {
+                var fCfg = PluginMain.Config?.Fishing;
+                if (fCfg == null || !fCfg.Enabled || !fCfg.RequireBobberCatch) return;
 
-                if (!hasValidBobberCatch)
-                {
-                    return; // 찌 투사체가 없거나, 물속 찌 위치가 아닌 다른 위치(타인이 발밑에 던져줌)에서 발생한 드롭은 전량 보상 거부
-                }
+                TSPlayer? player = args.Player;
+                if (player == null || !player.IsLoggedIn) return;
+                if (!_bobberProjectileIds.Contains(args.Type)) return;
+                if (args.Owner != player.Index) return;
 
-                // 🌟 [어뷰징 방지 2] 낚시 성공 쿨타임 검증 (고속 패킷 매크로/핵 차단)
+                long now = Environment.TickCount64;
                 lock (_fishingLock)
                 {
-                    DateTime now = DateTime.UtcNow;
-                    if (_lastFishingSuccessTimes.TryGetValue(player.Account.Name, out DateTime lastTime))
+                    PruneBobberCasts(now);
+                    _bobberCasts[args.Index] = new BobberCast
                     {
-                        double elapsed = (now - lastTime).TotalSeconds;
-                        if (elapsed < fCfg.MinFishingIntervalSeconds)
-                        {
-                            return; // 비정상적으로 빠른 연속 낚시 패킷 차단
-                        }
+                        PlayerIndex = player.Index,
+                        CastTick = now,
+                        X = args.Position.X,
+                        Y = args.Position.Y
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Info($"[Fishing] 찌 생성 추적 실패: {ex.GetType().Name}");
+            }
+        }
+
+        /// <summary>찌 회수 — 서버 사본 좌표와 액체 여부로 실제 낚시 중이었는지 판정한다.</summary>
+        private static void OnProjectileKill(object? sender, GetDataHandlers.ProjectileKillEventArgs args)
+        {
+            try
+            {
+                var fCfg = PluginMain.Config?.Fishing;
+                if (fCfg == null || !fCfg.Enabled || !fCfg.RequireBobberCatch) return;
+
+                TSPlayer? player = args.Player;
+                if (player == null || !player.IsLoggedIn) return;
+
+                BobberCast? cast;
+                lock (_fishingLock)
+                {
+                    if (!_bobberCasts.TryGetValue(args.ProjectileIndex, out cast)) return;
+                    _bobberCasts.Remove(args.ProjectileIndex);
+                }
+                if (cast.PlayerIndex != player.Index) return;
+
+                // 좌표는 클라이언트 신고값이 아니라 서버가 들고 있는 투사체 사본에서 읽는다.
+                float x = cast.X, y = cast.Y;
+                int pi = args.ProjectileIndex;
+                if (pi >= 0 && pi < Main.maxProjectiles)
+                {
+                    Projectile proj = Main.projectile[pi];
+                    if (proj != null && proj.active && _bobberProjectileIds.Contains(proj.type))
+                    {
+                        x = proj.position.X;
+                        y = proj.position.Y;
                     }
-                    _lastFishingSuccessTimes[player.Account.Name] = now;
                 }
 
-                PluginMain.TitleService.IncrementStat(player.Account.Name, "fishing", 1);
+                // 물 밖에서 회수한 찌는 낚시가 아니다 (허공 캐스팅 연타 차단).
+                if (!IsInLiquid(x, y)) return;
+
+                long window = Environment.TickCount64 + Math.Max(200, fCfg.CatchWindowMs);
+                lock (_fishingLock)
+                {
+                    _catchWindowUntil[player.Index] = window;
+                }
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Info($"[Fishing] 찌 회수 추적 실패: {ex.GetType().Name}");
+            }
+        }
+
+        /// <summary>인벤토리에 물고기/상자가 등장 — 찌 회수 직후일 때만 보상한다.</summary>
+        private static void TryAwardFishingCatch(TSPlayer player, int itemId)
+        {
+            try
+            {
+                var fCfg = PluginMain.Config?.Fishing;
+                if (fCfg == null || !fCfg.Enabled) return;
+                if (!IsFishOrCrate(itemId)) return;
+
+                string account = player.Account?.Name ?? player.Name;
+                if (string.IsNullOrEmpty(account)) return;
+
+                long now = Environment.TickCount64;
+
+                lock (_fishingLock)
+                {
+                    // (1) 서버가 관측한 찌 회수 이력이 없으면 보상하지 않는다.
+                    if (fCfg.RequireBobberCatch)
+                    {
+                        if (!_catchWindowUntil.TryGetValue(player.Index, out long until)) return;
+                        _catchWindowUntil.Remove(player.Index);
+                        if (now > until) return;
+                    }
+
+                    // (2) 낚싯대 소지 여부 (보조 검증, 설정으로 끌 수 있음)
+                    if (fCfg.RequireFishingPoleHeld)
+                    {
+                        Item held = player.TPlayer.HeldItem;
+                        if (held == null || held.IsAir || !_fishingPoleItemIds.Contains(held.type)) return;
+                    }
+
+                    // (3) 쿨타임 — 단조 증가 시계라 NTP 역행에도 음수가 나오지 않는다.
+                    if (fCfg.MinFishingIntervalSeconds > 0)
+                    {
+                        long minMs = (long)(fCfg.MinFishingIntervalSeconds * 1000.0);
+                        if (_lastFishingRewardTick.TryGetValue(account, out long last) && now - last < minMs)
+                        {
+                            return;
+                        }
+                        if (_lastFishingRewardTick.Count >= MaxFishingCooldownEntries)
+                        {
+                            _lastFishingRewardTick.Clear();
+                        }
+                        _lastFishingRewardTick[account] = now;
+                    }
+                }
+
+                bool isCrate = IsCrateItem(itemId);
+
+                PluginMain.TitleService.IncrementStat(account, "fishing", 1);
                 CheckTitleUnlocks(player);
 
                 long exp = fCfg.DefaultExp;
@@ -578,23 +705,27 @@ namespace TShockEconomyExp.Handlers
                     money = (long)(money * fCfg.CrateMoneyMultiplier);
                 }
 
-                var title = PluginMain.TitleService.GetEquippedTitle(player.Account.Name);
+                var title = PluginMain.TitleService.GetEquippedTitle(account);
                 if (title != null)
                 {
                     if (title.BonusExpRatio > 0) exp = (long)(exp * (1.0 + title.BonusExpRatio));
                     if (title.BonusMoneyRatio > 0) money = (long)(money * (1.0 + title.BonusMoneyRatio));
                 }
 
-                PluginMain.ExpService.AddExp(player.Account.Name, exp, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
-                PluginMain.EconomyService.AddBalance(player.Account.Name, money, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
+                PluginMain.ExpService.AddExp(account, exp, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
+                PluginMain.EconomyService.AddBalance(account, money, isCrate ? "희귀 상자 낚시 성공" : "물고기 낚시 성공");
 
                 ShowCombatText(player, $"+{exp} EXP! (+{money}골드)", Color.Cyan);
 
                 if (fCfg.NotifyInChat)
                 {
                     string targetType = isCrate ? "🎁 희귀 상자 낚시!" : "🐟 물고기 낚시 성공!";
-                    player.SendMessage($"[낚시] {targetType} +{exp:N0} EXP | +{money:N0} {PluginMain.Config.CurrencyName}", Color.Aqua);
+                    player.SendMessage($"[낚시] {targetType} +{exp:N0} EXP | +{money:N0} {PluginMain.Config?.CurrencyName}", Color.Aqua);
                 }
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Info($"[Fishing] 보상 처리 실패: {ex.GetType().Name}");
             }
         }
 
